@@ -257,6 +257,12 @@ papercuts/
   scripts/papercut              # CLI: log, resolve, history, enable, install
   templates/
   docs/
+    HOME-VS-REPO.md         # home pointer vs project ambient log
+    COLLISIONS.md
+    FLEET-REVIEW-TODO.md    # optional AGENTS/CLAUDE cleanup checklist
+  templates/
+    HOME-AGENTS.snippet.md  # thin home brief
+    new-repo-checklist.md   # enable + commit on new projects
 ```
 
 ---
