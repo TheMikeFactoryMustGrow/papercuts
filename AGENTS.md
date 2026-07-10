@@ -28,22 +28,35 @@ Installs:
 
 ### B) Enable in a *consumer* project (once per project)
 
+**Critical:** `install` alone does not turn on capture in a project. You must
+also create the **snippet** and **log**.
+
 ```bash
 cd /path/to/their-project
-papercut enable
+papercut status          # see needs_enable
+papercut enable          # AGENTS.md snippet + PAPERCUTS.md
+papercut status          # project_enabled=true
 ```
 
-That:
+`papercut enable` does:
 
-- Appends a marked snippet to that project’s `AGENTS.md` (creates file if needed)  
-- Creates `PAPERCUTS.md` header if missing  
+| Creates / updates | Content |
+|-------------------|---------|
+| `AGENTS.md` | Marked `<!-- papercuts:begin -->…<!-- papercuts:end -->` block from `templates/AGENTS.snippet.md` |
+| `PAPERCUTS.md` | Header from `templates/PAPERCUTS.header.md` (empty sanding list) |
 
 **Do not** copy the entire SKILL.md into every project. Projects only need the
 short AGENTS snippet; the skill stays machine-global (or harness-global).
 
+If the skill is already installed and the user is **in** a consumer project, you
+can enable without them cloning this package: run `papercut status`, then **ask**
+before `papercut enable` (skill bootstrap gate). That is the preferred “new repo”
+on-ramp.
+
 ### C) If they only asked “what is this?”
 
-Summarize from `README.md` + `docs/DESIGN.md`. Offer install + enable.
+Summarize from `README.md` + `docs/DESIGN.md`. Offer install + enable. Emphasize
+**three pieces**: machine skill/CLI, project AGENTS snippet, project PAPERCUTS.md.
 
 ## What not to do
 

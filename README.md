@@ -29,16 +29,24 @@ Inspired by [Steve Ruiz](https://x.com/steveruizok/status/2075303919664734295).
 **Recommended coworker onboarding:**
 
 1. Share this repo URL.  
-2. Once per machine: `./scripts/papercut install` (or ask an agent: “install papercuts from this repo”).  
-3. Once per project: `papercut enable` (adds a short AGENTS.md block + empty `PAPERCUTS.md`).  
+2. **Once per machine:** `./scripts/papercut install` (skill + `papercut` CLI).  
+3. **Once per project:** `papercut enable` (AGENTS.md **snippet** + **PAPERCUTS.md** log).  
 4. Work as usual — agents log mid-task.  
 5. Periodically: “fix the papercuts” / `/papercuts`.
 
-Agents should **not** reinvent the sand skill in every project. They only need:
+**Shortcut:** in any project, ask an agent that already has the skill installed:
 
-- **Project:** short AGENTS.md snippet (permission to complain + how to log)  
-- **Machine:** skill + CLI (how to sand)
+> Set up papercuts in this repo  
 
+The skill runs `papercut status`, and if the snippet/log are missing it **asks you**
+before running `papercut enable`. That is an intentional on-ramp for new repos.
+
+Agents should **not** reinvent the sand skill in every project. They need:
+
+| Layer | What | Command |
+|-------|------|---------|
+| **Machine** | Skill + CLI | `papercut install` |
+| **Project** | AGENTS.md snippet + PAPERCUTS.md | `papercut enable` |
 ---
 
 ## Architecture (agnostic)
@@ -97,19 +105,63 @@ This copies the skill into:
 
 Optional flags: `--claude`, `--grok`, `--agents` (only one harness).
 
-### Enable in a project
+### Enable in a project (snippet + log)
+
+Installing the skill alone is **not** enough for ambient capture. Each project
+also needs two files at the **git root**:
+
+| File | Purpose | How it gets there |
+|------|---------|-------------------|
+| **AGENTS.md** snippet | Tells agents to log friction mid-task | `papercut enable` |
+| **PAPERCUTS.md** | Append-only sanding list | `papercut enable` (or `papercut init` for log only) |
 
 ```bash
 cd /path/to/your-project
 papercut enable
+papercut status    # expect project_enabled=true
 ```
 
-Creates/updates `AGENTS.md` (marked block) and `PAPERCUTS.md`.
+**What `enable` writes:**
 
-If the project only has `CLAUDE.md`:
+1. **AGENTS.md** — creates the file or appends a marked block:
+
+```markdown
+<!-- papercuts:begin -->
+## Log papercuts
+… papercut -m <model> "what you were doing → what got in the way" …
+<!-- papercuts:end -->
+```
+
+   Source template: [`templates/AGENTS.snippet.md`](./templates/AGENTS.snippet.md).  
+   Re-run with `papercut enable --force` to refresh the block.
+
+2. **PAPERCUTS.md** — header only until agents log:
+
+```markdown
+# PAPERCUTS
+Agent-logged friction …
+```
+
+   Source template: [`templates/PAPERCUTS.header.md`](./templates/PAPERCUTS.header.md).
+
+It does **not** copy `SKILL.md` into the project. The skill stays machine-global.
+
+If the project only has `CLAUDE.md` (no AGENTS.md):
 
 ```bash
 papercut enable --prefer-claude
+```
+
+**Manual alternative** (if you prefer not to run the CLI): copy the contents of
+`templates/AGENTS.snippet.md` into your project `AGENTS.md`, and copy
+`templates/PAPERCUTS.header.md` to `PAPERCUTS.md` at the repo root.
+
+**Check anytime:**
+
+```bash
+papercut status
+# needs_enable=true  → run enable (or ask an agent to set up papercuts)
+# project_enabled=true → ready for capture
 ```
 
 ---
@@ -138,6 +190,13 @@ papercut path
 The skill clusters related entries, applies the **smallest preventive fix**, and
 clears only what actually prevents recurrence. It does **not** run formal RCA on
 every line by default.
+
+**First time in a repo (human → agent):**
+
+> Set up papercuts here  
+> /papercuts   # also runs status; offers enable if missing  
+
+The skill will **not** write AGENTS.md / PAPERCUTS.md without your confirmation.
 
 ---
 

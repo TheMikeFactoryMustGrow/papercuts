@@ -22,12 +22,16 @@ flood.
 > each open papercut’s cause with the smallest durable change. The log is a
 > sensor; the sanded surface is the product.
 
-## Two loops
+## Two loops (+ bootstrap)
 
 | Loop | Trigger | Output |
 |------|---------|--------|
+| **Bootstrap** | Skill invoke / “set up papercuts” | Optional `papercut enable` after user yes |
 | **Log** | Ambient, mid-task | One entry in repo `PAPERCUTS.md` |
 | **Fix / sand** | User asks | Preventive fixes + cleared/deferred entries + report |
+
+**Bootstrap gate:** on skill invoke, `papercut status`. If snippet or log is
+missing, **ask** before `papercut enable`. Never silent project edits.
 
 Do **not** auto-mine session transcripts unless the user asks. Under-reporting
 is the default failure mode of agents; over-reporting is rarer and easy to skip

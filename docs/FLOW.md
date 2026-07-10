@@ -1,5 +1,16 @@
 # Flow (short)
 
+## Bootstrap (every skill invoke)
+
+```
+papercut status
+    → needs_enable?
+        yes → ask user to enable for future capture
+                yes → papercut enable → continue
+                no  → continue without snippet (optional init for one-shot log)
+        no  → continue
+```
+
 ## Log path (ambient)
 
 ```
@@ -12,7 +23,8 @@ friction mid-task
 ## Fix path (user-triggered)
 
 ```
-locate PAPERCUTS.md
+bootstrap (above)
+    → locate PAPERCUTS.md
     → empty? stop (empty-ok)
     → load + cluster by shared preventive fix
     → light-causal diagnose + classify (fixable / defer / reclassify / promote)
