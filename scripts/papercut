@@ -1,0 +1,423 @@
+#!/usr/bin/env python3
+"""papercut — log agent friction to PAPERCUTS.md (platform-agnostic).
+
+Inspired by Steve Ruiz:
+  https://x.com/steveruizok/status/2075303919664734295
+
+Usage:
+  papercut "one or two sentences: what you were doing → what got in the way"
+  papercut log -m <model> "message"
+  papercut list [-n N]
+  papercut path
+  papercut init
+  papercut install          # install skill + CLI for this machine
+  papercut enable           # enable papercuts in the current git repo
+
+Environment (optional):
+  PAPERCUT_MODEL, PAPERCUT_AUTHOR
+  AGENT_MODEL / GROK_MODEL / CLAUDE_MODEL
+"""
+
+from __future__ import annotations
+
+import argparse
+import getpass
+import os
+import re
+import shutil
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+LOG_NAME = "PAPERCUTS.md"
+MARKER_BEGIN = "<!-- papercuts:begin -->"
+MARKER_END = "<!-- papercuts:end -->"
+
+HEADER = """# PAPERCUTS
+
+Agent-logged friction — small things that got in the way while working.
+Not a bug tracker. Not a changelog. Just a sanding list.
+
+Log with: `papercut "what you were doing → what got in the way"`
+Fix with: ask an agent to work through open entries (skill: **papercuts**).
+
+---
+
+"""
+
+AGENTS_SNIPPET = f"""{MARKER_BEGIN}
+## Log papercuts
+
+When you hit **small friction** while working — a tool call that missed and had
+to be retried, a confusing or undocumented setup step, a flaky command, a stale
+cache, a misleading error, a non-obvious gotcha — log it to this repo's
+`PAPERCUTS.md` via:
+
+```bash
+papercut -m <model> "one or two sentences: what you were doing → what got in the way"
+```
+
+Do this **proactively, in the moment**, even when none of these are blocking —
+together they show where the repo needs sanding. Distinct from git history
+(what shipped) and from issue trackers (real bugs / tracked work).
+
+To sand later: use the **papercuts** skill, or ask to "fix the papercuts" /
+"sand PAPERCUTS.md". Analysis is **cluster-first light-causal** (not formal
+RCA per item). If `papercut` is missing from PATH, run the installed skill
+script or see the papercuts package README.
+{MARKER_END}
+"""
+
+ENTRY_RE = re.compile(
+    r"^(\d{4}-\d{2}-\d{2}T[^\s]+)\s+-\s+(\S+)\s+-\s+(\S+)\s*$",
+    re.MULTILINE,
+)
+
+SUBCOMMANDS = {"log", "list", "path", "init", "install", "enable"}
+
+
+def package_root() -> Path:
+    """Repo root when running from a checkout; else skill install parent."""
+    here = Path(__file__).resolve().parent
+    # scripts/papercut → package root is parent of scripts/
+    if (here.parent / "SKILL.md").exists() or (here.parent / "skills" / "papercuts").exists():
+        return here.parent
+    # installed as ~/.*/skills/papercuts/scripts/papercut
+    if here.parent.name == "papercuts" and (here.parent / "SKILL.md").exists():
+        return here.parent
+    return here.parent
+
+
+def find_repo_root(start: Path) -> Path:
+    start = start.resolve()
+    for candidate in [start, *start.parents]:
+        if (candidate / ".git").exists():
+            return candidate
+    return start
+
+
+def log_path(start: Path | None = None) -> Path:
+    return find_repo_root(start or Path.cwd()) / LOG_NAME
+
+
+def default_model() -> str:
+    for key in (
+        "PAPERCUT_MODEL",
+        "AGENT_MODEL",
+        "GROK_MODEL",
+        "CLAUDE_MODEL",
+        "ANTHROPIC_MODEL",
+    ):
+        val = os.environ.get(key, "").strip()
+        if val:
+            return val
+    return "unknown"
+
+
+def default_author() -> str:
+    for key in ("PAPERCUT_AUTHOR", "GIT_AUTHOR_NAME", "USER"):
+        val = os.environ.get(key, "").strip()
+        if val:
+            return val.replace(" ", "-").lower() if key == "GIT_AUTHOR_NAME" else val
+    try:
+        return getpass.getuser()
+    except Exception:
+        return "agent"
+
+
+def utc_now_stamp() -> str:
+    now = datetime.now(timezone.utc)
+    return now.strftime("%Y-%m-%dT%H:%M:%S.") + f"{now.microsecond // 1000:03d}Z"
+
+
+def ensure_header(path: Path) -> None:
+    if not path.exists() or not path.read_text(encoding="utf-8").strip():
+        path.write_text(HEADER, encoding="utf-8")
+
+
+def cmd_init(args: argparse.Namespace) -> int:
+    path = log_path(Path(args.cwd) if args.cwd else None)
+    if path.exists() and path.stat().st_size > 0 and not args.force:
+        print(f"already exists: {path}", file=sys.stderr)
+        return 0
+    path.write_text(HEADER, encoding="utf-8")
+    print(path)
+    return 0
+
+
+def cmd_path(args: argparse.Namespace) -> int:
+    print(log_path(Path(args.cwd) if args.cwd else None))
+    return 0
+
+
+def cmd_log(args: argparse.Namespace) -> int:
+    message = " ".join(args.message).strip()
+    if not message:
+        print("error: empty message", file=sys.stderr)
+        return 2
+    message = re.sub(r"\s+", " ", message).strip()
+    model = (args.model or default_model()).strip()
+    author = (args.author or default_author()).strip()
+    stamp = utc_now_stamp()
+    path = log_path(Path(args.cwd) if args.cwd else None)
+    ensure_header(path)
+    entry = f"{stamp} - {model} - {author}\n\n{message}\n\n"
+    with path.open("a", encoding="utf-8") as f:
+        f.write(entry)
+    print(f"logged → {path}")
+    print(f"  {stamp} - {model} - {author}")
+    print(f"  {message}")
+    return 0
+
+
+def parse_entries(text: str) -> list[dict]:
+    matches = list(ENTRY_RE.finditer(text))
+    if not matches:
+        return []
+    entries: list[dict] = []
+    for i, m in enumerate(matches):
+        start = m.start()
+        end = matches[i + 1].start() if i + 1 < len(matches) else len(text)
+        block = text[start:end].strip()
+        lines = block.splitlines()
+        body = "\n".join(lines[1:]).strip()
+        entries.append(
+            {
+                "stamp": m.group(1),
+                "model": m.group(2),
+                "author": m.group(3),
+                "body": body,
+            }
+        )
+    return entries
+
+
+def cmd_list(args: argparse.Namespace) -> int:
+    path = log_path(Path(args.cwd) if args.cwd else None)
+    if not path.exists():
+        print(f"(no {LOG_NAME} at {path.parent})", file=sys.stderr)
+        return 1
+    entries = parse_entries(path.read_text(encoding="utf-8"))
+    if not entries:
+        print(f"(empty log: {path})")
+        return 0
+    shown = list(reversed(entries))
+    if args.n is not None:
+        shown = shown[: args.n]
+    print(f"{path}  ({len(entries)} total, showing {len(shown)})\n")
+    for i, e in enumerate(shown, 1):
+        print(f"{i}. {e['stamp']}  [{e['model']}]  {e['author']}")
+        print(f"   {e['body']}")
+        print()
+    return 0
+
+
+def skill_source_dir() -> Path:
+    root = package_root()
+    nested = root / "skills" / "papercuts"
+    if (nested / "SKILL.md").exists():
+        return nested
+    if (root / "SKILL.md").exists():
+        return root
+    raise SystemExit(f"error: cannot find SKILL.md under {root}")
+
+
+def cmd_install(args: argparse.Namespace) -> int:
+    """Install skill into common agent skill dirs + PATH symlink."""
+    root = package_root()
+    skill_md = root / "SKILL.md"
+    if not skill_md.exists():
+        skill_md = skill_source_dir() / "SKILL.md"
+    scripts_src = root / "scripts" / "papercut"
+    if not scripts_src.exists():
+        scripts_src = Path(__file__).resolve()
+
+    home = Path.home()
+    if args.claude or args.grok or args.agents:
+        targets = []
+        if args.claude:
+            targets.append(home / ".claude" / "skills" / "papercuts")
+        if args.grok:
+            targets.append(home / ".grok" / "skills" / "papercuts")
+        if args.agents:
+            targets.append(home / ".agents" / "skills" / "papercuts")
+    else:
+        targets = [
+            home / ".claude" / "skills" / "papercuts",
+            home / ".grok" / "skills" / "papercuts",
+        ]
+
+    for dest in targets:
+        if dest.exists() or dest.is_symlink():
+            if dest.is_symlink():
+                dest.unlink()
+            elif dest.is_dir():
+                shutil.rmtree(dest)
+        dest.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(skill_md, dest / "SKILL.md")
+        (dest / "scripts").mkdir(exist_ok=True)
+        shutil.copy2(scripts_src, dest / "scripts" / "papercut")
+        os.chmod(dest / "scripts" / "papercut", 0o755)
+        print(f"installed skill → {dest}")
+
+    local_bin = home / ".local" / "bin"
+    local_bin.mkdir(parents=True, exist_ok=True)
+    link = local_bin / "papercut"
+    if link.exists() or link.is_symlink():
+        link.unlink()
+    # Prefer linking the package checkout so updates are one git pull away
+    link.symlink_to(scripts_src.resolve())
+    os.chmod(scripts_src, 0o755)
+    print(f"installed CLI  → {link} -> {scripts_src.resolve()}")
+    if str(local_bin) not in os.environ.get("PATH", ""):
+        print(
+            f"note: add {local_bin} to PATH if `papercut` is not found",
+            file=sys.stderr,
+        )
+    print("done. In any project: papercut enable")
+    return 0
+
+
+def cmd_enable(args: argparse.Namespace) -> int:
+    """Append AGENTS.md snippet + init PAPERCUTS.md in the current project."""
+    root = find_repo_root(Path(args.cwd) if args.cwd else Path.cwd())
+    agents = root / "AGENTS.md"
+    # Prefer AGENTS.md; also support CLAUDE.md if only that exists
+    target = agents
+    if not agents.exists() and (root / "CLAUDE.md").exists() and args.prefer_claude:
+        target = root / "CLAUDE.md"
+
+    snippet = AGENTS_SNIPPET
+    # Allow template override from package
+    tpl = package_root() / "templates" / "AGENTS.snippet.md"
+    if tpl.exists():
+        snippet = tpl.read_text(encoding="utf-8")
+        if MARKER_BEGIN not in snippet:
+            snippet = f"{MARKER_BEGIN}\n{snippet.rstrip()}\n{MARKER_END}\n"
+
+    if target.exists():
+        text = target.read_text(encoding="utf-8")
+        if MARKER_BEGIN in text and not args.force:
+            print(f"already enabled in {target} (use --force to replace block)")
+        else:
+            if MARKER_BEGIN in text and MARKER_END in text:
+                text = re.sub(
+                    re.escape(MARKER_BEGIN) + r".*?" + re.escape(MARKER_END),
+                    snippet.strip(),
+                    text,
+                    count=1,
+                    flags=re.DOTALL,
+                )
+            else:
+                text = text.rstrip() + "\n\n" + snippet
+            target.write_text(text if text.endswith("\n") else text + "\n", encoding="utf-8")
+            print(f"updated {target}")
+    else:
+        target.write_text(
+            f"# AGENTS.md\n\nProject instructions for coding agents.\n\n{snippet}",
+            encoding="utf-8",
+        )
+        print(f"created {target}")
+
+    # init log
+    path = root / LOG_NAME
+    if not path.exists() or args.force_log:
+        path.write_text(HEADER, encoding="utf-8")
+        print(f"created {path}")
+    else:
+        print(f"log exists {path}")
+
+    print(
+        "\nNext: ensure the papercuts skill is installed (`papercut install`), "
+        "then agents will log mid-work. Sand with: \"fix the papercuts\"."
+    )
+    return 0
+
+
+def build_parser() -> argparse.ArgumentParser:
+    p = argparse.ArgumentParser(
+        prog="papercut",
+        description="Log agent friction to PAPERCUTS.md (platform-agnostic).",
+    )
+    p.add_argument("-C", "--cwd", default=None, help="start directory for repo discovery")
+    sub = p.add_subparsers(dest="command")
+
+    log_p = sub.add_parser("log", help="append a papercut entry")
+    log_p.add_argument("-m", "--model", default=None)
+    log_p.add_argument("-a", "--author", default=None)
+    log_p.add_argument("message", nargs="+")
+
+    list_p = sub.add_parser("list", help="list entries (newest first)")
+    list_p.add_argument("-n", type=int, default=None)
+
+    sub.add_parser("path", help="print path to PAPERCUTS.md")
+    init_p = sub.add_parser("init", help="create PAPERCUTS.md with header")
+    init_p.add_argument("-f", "--force", action="store_true")
+
+    inst = sub.add_parser("install", help="install skill + CLI on this machine")
+    inst.add_argument("--claude", action="store_true", help="only ~/.claude/skills")
+    inst.add_argument("--grok", action="store_true", help="only ~/.grok/skills")
+    inst.add_argument("--agents", action="store_true", help="only ~/.agents/skills")
+
+    en = sub.add_parser("enable", help="enable papercuts in current git repo")
+    en.add_argument("-f", "--force", action="store_true", help="replace existing snippet block")
+    en.add_argument("--force-log", action="store_true", help="rewrite PAPERCUTS.md header")
+    en.add_argument(
+        "--prefer-claude",
+        action="store_true",
+        help="if AGENTS.md missing, use CLAUDE.md when present",
+    )
+
+    p.add_argument("-m", "--model", default=None, help=argparse.SUPPRESS)
+    p.add_argument("-a", "--author", default=None, help=argparse.SUPPRESS)
+    p.add_argument("bare_message", nargs="*", help=argparse.SUPPRESS)
+    return p
+
+
+def inject_default_log(argv: list[str]) -> list[str]:
+    i = 0
+    while i < len(argv):
+        tok = argv[i]
+        if tok in ("-h", "--help"):
+            return argv
+        if tok in SUBCOMMANDS:
+            return argv
+        if tok in ("-C", "--cwd"):
+            i += 2
+            continue
+        if tok.startswith("-"):
+            return ["log", *argv]
+        return ["log", *argv]
+    return argv
+
+
+def main(argv: list[str] | None = None) -> int:
+    argv = inject_default_log(list(sys.argv[1:] if argv is None else argv))
+    parser = build_parser()
+    args = parser.parse_args(argv)
+
+    if args.command is None:
+        if getattr(args, "bare_message", None):
+            args.command = "log"
+            args.message = args.bare_message
+        else:
+            parser.print_help()
+            return 2
+
+    dispatch = {
+        "log": cmd_log,
+        "list": cmd_list,
+        "path": cmd_path,
+        "init": cmd_init,
+        "install": cmd_install,
+        "enable": cmd_enable,
+    }
+    fn = dispatch.get(args.command)
+    if not fn:
+        parser.print_help()
+        return 2
+    return fn(args)
+
+
+if __name__ == "__main__":
+    sys.exit(main())
