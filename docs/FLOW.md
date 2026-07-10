@@ -31,10 +31,22 @@ bootstrap (above)
     → for each fixable cluster:
           smallest preventive fix
           → prevents recurrence?
-                yes → clear cluster from log
+                yes → papercut resolve --stamp … -n "fix"  (open list + history)
                 no  → defer + reason (do not clear)
     → report
     → promote-candidates? propose only (no silent global config edits)
 ```
 
-See `SKILL.md` for the full protocol.
+## Kaizen path (rare / quarterly)
+
+```
+papercut history --stats + history + open list
+    → cluster by mechanism over window
+    → rank (volume, recurrence after resolve)
+    → disposition ladder per top cluster
+    → deep RCA only if escalated
+    → propose (implement only if asked)
+    → report
+```
+
+See `SKILL.md` and `skills/papercuts-kaizen/SKILL.md`.

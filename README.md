@@ -8,11 +8,30 @@ that friction visible and fixable.
 
 Inspired by [Steve Ruiz](https://x.com/steveruizok/status/2075303919664734295).
 
+## Install with an agent
+
+Paste this to an agent that can run shell commands:
+
+```text
+1) Clone https://github.com/TheMikeFactoryMustGrow/papercuts (or use my checkout).
+2) Run: chmod +x scripts/papercut && ./scripts/papercut install
+3) In my project repo: run papercut status; if needs_enable, ask me then papercut enable.
+4) Confirm with papercut status (project_enabled=true).
+```
+
+Or, if the skill is **already** installed on the machine, in any project:
+
+> Set up papercuts in this repo
+
+The **papercuts** skill checks status and **asks before** writing AGENTS.md /
+PAPERCUTS.md. Later: “fix the papercuts”. Quarterly: “papercuts kaizen”.
+
 | Audience | Read this |
 |----------|-----------|
 | **Humans** | this README |
-| **Agents opening this repo** | [`AGENTS.md`](./AGENTS.md) |
-| **Agents fixing a project’s log** | installed skill [`SKILL.md`](./SKILL.md) |
+| **Agents opening this package** | [`AGENTS.md`](./AGENTS.md) |
+| **Day-to-day sand** | skill [`SKILL.md`](./SKILL.md) / `skills/papercuts/` |
+| **Long-cycle patterns** | skill [`skills/papercuts-kaizen/SKILL.md`](./skills/papercuts-kaizen/SKILL.md) |
 
 ---
 
@@ -32,21 +51,15 @@ Inspired by [Steve Ruiz](https://x.com/steveruizok/status/2075303919664734295).
 2. **Once per machine:** `./scripts/papercut install` (skill + `papercut` CLI).  
 3. **Once per project:** `papercut enable` (AGENTS.md **snippet** + **PAPERCUTS.md** log).  
 4. Work as usual — agents log mid-task.  
-5. Periodically: “fix the papercuts” / `/papercuts`.
-
-**Shortcut:** in any project, ask an agent that already has the skill installed:
-
-> Set up papercuts in this repo  
-
-The skill runs `papercut status`, and if the snippet/log are missing it **asks you**
-before running `papercut enable`. That is an intentional on-ramp for new repos.
+5. Periodically: “fix the papercuts” / `/papercuts`.  
+6. Quarterly (or when history is rich): “papercuts kaizen” / `/papercuts-kaizen`.
 
 Agents should **not** reinvent the sand skill in every project. They need:
 
 | Layer | What | Command |
 |-------|------|---------|
-| **Machine** | Skill + CLI | `papercut install` |
-| **Project** | AGENTS.md snippet + PAPERCUTS.md | `papercut enable` |
+| **Machine** | Skills + CLI | `papercut install` (papercuts **and** papercuts-kaizen) |
+| **Project** | AGENTS snippet + open log + history ledger | `papercut enable` |
 ---
 
 ## Architecture (agnostic)
@@ -113,7 +126,8 @@ also needs two files at the **git root**:
 | File | Purpose | How it gets there |
 |------|---------|-------------------|
 | **AGENTS.md** snippet | Tells agents to log friction mid-task | `papercut enable` |
-| **PAPERCUTS.md** | Append-only sanding list | `papercut enable` (or `papercut init` for log only) |
+| **PAPERCUTS.md** | **Open** sanding list (cleared on fix) | `papercut enable` (or `init`) |
+| **`.papercuts/history.jsonl`** | **Shadow ledger** (append-only for kaizen) | Created on enable / first log |
 
 ```bash
 cd /path/to/your-project
@@ -172,6 +186,7 @@ papercut status
 
 ```bash
 papercut -m claude-opus "While running tests, vitest cwd is apps/web so root-relative paths miss."
+# also appends event=logged to .papercuts/history.jsonl
 ```
 
 **Inspect:**
@@ -179,7 +194,16 @@ papercut -m claude-opus "While running tests, vitest cwd is apps/web so root-rel
 ```bash
 papercut list
 papercut path
+papercut history --stats
 ```
+
+**Clear after a real fix (agents — do not hand-delete):**
+
+```bash
+papercut resolve --stamp 2026-07-10T01:21:31.404Z -n "Documented apps/web test cwd in AGENTS.md"
+```
+
+Open list shrinks; history keeps the row for long-cycle review.
 
 **Sand (human → agent):**
 
@@ -187,14 +211,20 @@ papercut path
 > /papercuts  
 > Sand PAPERCUTS.md  
 
-The skill clusters related entries, applies the **smallest preventive fix**, and
-clears only what actually prevents recurrence. It does **not** run formal RCA on
-every line by default.
+Cluster-first light-causal; clear via `resolve` only when the fix prevents recurrence.
+
+**Long cycle (human → agent):**
+
+> Papercuts kaizen  
+> /papercuts-kaizen  
+> What friction patterns keep coming back?  
+
+Mines `.papercuts/history.jsonl` for volume, recurrence after “fixed”, and
+systemic proposals. Deep RCA only on escalated clusters.
 
 **First time in a repo (human → agent):**
 
 > Set up papercuts here  
-> /papercuts   # also runs status; offers enable if missing  
 
 The skill will **not** write AGENTS.md / PAPERCUTS.md without your confirmation.
 
@@ -205,29 +235,27 @@ The skill will **not** write AGENTS.md / PAPERCUTS.md without your confirmation.
 See [`docs/DESIGN.md`](./docs/DESIGN.md) for the full list. Highlights:
 
 1. **Log is a sensor; sanded surface is the product.** Emptying the file without fixes is vanity.  
-2. **Cluster-first light-causal**, not per-item 5-Why.  
-3. **Never clear without a preventive change** (or explicit noise reclassify).  
-4. **Promotion (global agent config) is proposal-only** — no silent home-AGENTS edits.  
-5. **Do not merge** with issue trackers or skill-ops / eval incident systems.  
-6. **Ambient log** (AGENTS.md) + **user-triggered fix** (skill) — not unprompted session mining.
-
+2. **Cluster-first light-causal**, not per-item 5-Why (kaizen escalates only top patterns).  
+3. **Never clear without a preventive change** — and clear via `papercut resolve` so history remains.  
+4. **Open list ≠ archive.** Delete-on-fix open list + append-only shadow ledger.  
+5. **Promotion (global agent config) is proposal-only** — no silent home-AGENTS edits.  
+6. **Do not merge** with issue trackers or skill-ops / eval incident systems.  
+7. **Ambient log** + **user-triggered sand** + **rare kaizen** — three cadences.
 ---
 
 ## Repo layout
 
 ```
 papercuts/
-  README.md                 # humans
-  AGENTS.md                 # agents working on / installing this package
-  SKILL.md                  # skill body (installed to harness skill dirs)
-  LICENSE
-  scripts/papercut          # CLI
+  README.md
+  AGENTS.md
+  SKILL.md                      # day-to-day sand skill (also skills/papercuts/)
+  skills/
+    papercuts/SKILL.md
+    papercuts-kaizen/SKILL.md   # long-cycle pattern review
+  scripts/papercut              # CLI: log, resolve, history, enable, install
   templates/
-    AGENTS.snippet.md       # block for consumer projects
-    PAPERCUTS.header.md
   docs/
-    DESIGN.md               # constraints & architecture decisions
-    FLOW.md                 # log + fix paths (short)
 ```
 
 ---

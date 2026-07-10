@@ -70,16 +70,40 @@ optimize theater over sanding. Optional only if the user asks.
 Loading the full fix protocol into every session via AGENTS.md is prompt bloat.
 Loading nothing means agents never log.
 
+## Retention (open list vs shadow ledger)
+
+| Store | Policy | Purpose |
+|-------|--------|---------|
+| `PAPERCUTS.md` | **Delete-on-fix** via `papercut resolve` | Short open worklist |
+| `.papercuts/history.jsonl` | **Append-only** (`logged` + `resolved`) | Compounding data for kaizen |
+
+Hand-deleting open entries **without** `resolve` destroys history. Skills must
+require the CLI for clears.
+
+This is **not** double-entry accounting; it is sensor + archive.
+
+## Longer cycle: papercuts-kaizen
+
+Separate skill (same package, not required to be a marketplace plugin):
+
+- Cadence: monthly / quarterly / on request  
+- Input: history ledger (+ open list)  
+- Depth: cluster + disposition ladder; deep RCA only if size/recurrence escalates  
+- Default: analyze + propose; implement only if asked  
+
+Two skills in one git repo is enough. A **plugin** is optional packaging for
+marketplace install — not a process requirement.
+
 ## Hard rules
 
 1. **Never delete a log entry without a preventive change** (or explicit
    reclassify-as-noise).  
-2. **No drive-by refactors** — stay on the cluster’s cause.  
-3. **Promotion is proposal-only** — do not silently edit user-global agent
+2. **Clear only via `papercut resolve`** so the shadow ledger stays complete.  
+3. **No drive-by refactors** — stay on the cluster’s cause.  
+4. **Promotion is proposal-only** — do not silently edit user-global agent
    config (home AGENTS, org defaults).  
-4. **Finite snapshot** on a fix pass — ignore ambient appends mid-pass.  
-5. **Separate systems** — not an issue tracker; not skill-ops/eval incident logs.
-
+5. **Finite snapshot** on a fix pass — ignore ambient appends mid-pass.  
+6. **Separate systems** — not an issue tracker; not skill-ops/eval incident logs.
 ## Scope ladder (when fixing)
 
 | Class | Where the fix lands |

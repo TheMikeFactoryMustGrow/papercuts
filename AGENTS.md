@@ -8,9 +8,9 @@ new cleanup skill from scratch.
 
 A platform-agnostic way for coding agents to:
 
-1. **Log** tiny non-blocking friction to a per-repo `PAPERCUTS.md`  
-2. **Sand** that list later (cluster-first light-causal fixes — **not** formal RCA per item)
-
+1. **Log** tiny non-blocking friction to a per-repo `PAPERCUTS.md` (+ history ledger)  
+2. **Sand** open items later (cluster-first light-causal — **not** formal RCA per item) via **papercuts**  
+3. **Kaizen** on the shadow ledger quarterly via **papercuts-kaizen** (patterns / optional deep RCA)
 ## Do this when a human shares this repo
 
 ### A) Machine install (once)
@@ -23,9 +23,8 @@ command -v papercut || export PATH="$HOME/.local/bin:$PATH"
 
 Installs:
 
-- Skill → `~/.claude/skills/papercuts` and `~/.grok/skills/papercuts`  
+- Skills → `papercuts` **and** `papercuts-kaizen` under `~/.claude/skills` and `~/.grok/skills`  
 - CLI → `~/.local/bin/papercut`
-
 ### B) Enable in a *consumer* project (once per project)
 
 **Critical:** `install` alone does not turn on capture in a project. You must
@@ -43,8 +42,8 @@ papercut status          # project_enabled=true
 | Creates / updates | Content |
 |-------------------|---------|
 | `AGENTS.md` | Marked `<!-- papercuts:begin -->…<!-- papercuts:end -->` block from `templates/AGENTS.snippet.md` |
-| `PAPERCUTS.md` | Header from `templates/PAPERCUTS.header.md` (empty sanding list) |
-
+| `PAPERCUTS.md` | Open sanding list header |
+| `.papercuts/history.jsonl` | Shadow ledger for kaizen (append-only) |
 **Do not** copy the entire SKILL.md into every project. Projects only need the
 short AGENTS snippet; the skill stays machine-global (or harness-global).
 

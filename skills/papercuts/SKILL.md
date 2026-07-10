@@ -28,7 +28,8 @@ A project needs **three** pieces (not just the skill):
 |-------|--------|------|
 | **Skill + CLI** | Machine (`papercut install`) | How to sand + how to log |
 | **AGENTS.md snippet** | Project (`papercut enable`) | Permission to log mid-task |
-| **PAPERCUTS.md** | Project git root (`papercut enable`) | The sanding list |
+| **PAPERCUTS.md** | Project git root | Open sanding list (delete-on-fix) |
+| **`.papercuts/history.jsonl`** | Project git root | Shadow ledger for long-cycle kaizen |
 
 Running this skill in a **new repo** is a supported way to get the project pieces
 in place — see **Bootstrap gate** below.
@@ -136,16 +137,23 @@ Deeper causal analysis only if the **user** explicitly asks.
 
 ```bash
 papercut status                              # project setup check
-papercut enable                              # AGENTS snippet + PAPERCUTS.md
-papercut "one or two sentences: …"           # log
+papercut enable                              # AGENTS snippet + PAPERCUTS.md + history dir
+papercut "one or two sentences: …"           # log (also appends history event=logged)
 papercut log -m <model-tag> -a <author> "…"
 papercut list
 papercut list -n 10
+papercut resolve --stamp <ts> -n "what you fixed"   # clear open entry + history event=resolved
+papercut resolve --contains "vitest" -n "…"
+papercut resolve --index 1 --index 2 -n "…"           # indices from list (newest first)
+papercut history -n 20
+papercut history --stats
 papercut path
 papercut init                                # log file only (no AGENTS snippet)
-papercut install                             # machine: skill dirs + PATH
+papercut install                             # machine: papercuts + papercuts-kaizen + PATH
 ```
 
+**Retention:** open list is **delete-on-fix** via `resolve`. History is **append-only**.
+Never hand-delete entries from `PAPERCUTS.md` — that skips the ledger and starves kaizen.
 **Log location:** git repo root nearest cwd (walk up to `.git`); else cwd.
 
 **If `papercut` is missing from PATH**, run the skill’s script:
@@ -233,18 +241,28 @@ Would a future agent following current docs/tools still hit the same failure mod
 
 ### F7 Clear (only after FG3 yes)
 
-Default: **delete-on-fix**. No required “Resolved” archive section.
+**Always use the CLI** (writes shadow history):
+
+```bash
+papercut resolve --stamp <entry-stamp> -n "one-line preventive fix"
+# or after clustering several stamps:
+papercut resolve --stamp A --stamp B -n "same fix for both"
+```
+
+Do **not** hand-edit entries out of `PAPERCUTS.md`.  
+Open list = delete-on-fix. History = `.papercuts/history.jsonl` for **papercuts-kaizen**.
 
 ### F8 Sanded-surface report
 
 Always deliver:
 
-- Fixed clusters (light-causal one-liner each)  
+- Fixed clusters (light-causal one-liner each) + resolve notes  
 - Deferred (+ why)  
 - Reclassified  
 - Remaining open: `papercut list -n 5`  
 - Files touched  
 - If enable ran this session: note that project is now set up for capture  
+- Mention `papercut history --stats` if many resolves this session  
 
 ### FG4 / F9 Promotion (proposal only)
 
@@ -269,7 +287,12 @@ Template: package `templates/AGENTS.snippet.md`.
 2. **PAPERCUTS.md** at git root — header only until agents log.  
    Template: package `templates/PAPERCUTS.header.md`.
 
-It does **not** copy SKILL.md into the project. The skill stays on the machine.
+3. **`.papercuts/history.jsonl`** — empty shadow ledger (created on enable / first log).
+
+It does **not** copy SKILL.md into the project. Skills stay on the machine.
+
+**Longer cycle:** skill **papercuts-kaizen** mines the ledger for systemic patterns
+(quarterly / monthly). Day-to-day sanding stays here.
 
 ---
 

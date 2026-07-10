@@ -4,43 +4,47 @@
 Inspired by Steve Ruiz:
   https://x.com/steveruizok/status/2075303919664734295
 
+Open list (PAPERCUTS.md): delete-on-fix via `papercut resolve`.
+Shadow ledger (.papercuts/history.jsonl): append-only for long-cycle kaizen.
+
 Usage:
-  papercut "one or two sentences: what you were doing → what got in the way"
+  papercut "message"
   papercut log -m <model> "message"
   papercut list [-n N]
-  papercut path
-  papercut init
-  papercut install          # install skill + CLI for this machine
-  papercut enable           # enable papercuts in the current git repo
-  papercut status           # check snippet + log + CLI in current repo
-
-Environment (optional):
-  PAPERCUT_MODEL, PAPERCUT_AUTHOR
-  AGENT_MODEL / GROK_MODEL / CLAUDE_MODEL
+  papercut resolve --stamp <ts> [-n "fix note"] ...
+  papercut resolve --contains "text" -n "fix note"
+  papercut history [-n N] [--event logged|resolved]
+  papercut history --stats
+  papercut path | init | status | enable | install
 """
 
 from __future__ import annotations
 
 import argparse
 import getpass
+import json
 import os
 import re
 import shutil
 import sys
+from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 
 LOG_NAME = "PAPERCUTS.md"
+HISTORY_DIR = ".papercuts"
+HISTORY_NAME = "history.jsonl"
 MARKER_BEGIN = "<!-- papercuts:begin -->"
 MARKER_END = "<!-- papercuts:end -->"
 
 HEADER = """# PAPERCUTS
 
 Agent-logged friction — small things that got in the way while working.
-Not a bug tracker. Not a changelog. Just a sanding list.
+Not a bug tracker. Not a changelog. Just a sanding list (open items only).
 
-Log with: `papercut "what you were doing → what got in the way"`
-Fix with: ask an agent to work through open entries (skill: **papercuts**).
+Log:   `papercut "what you were doing → what got in the way"`
+Clear: `papercut resolve --stamp <ts> -n "what you fixed"`  (writes shadow history)
+Sand:  skill **papercuts** · Longer cycle: skill **papercuts-kaizen**
 
 ---
 
@@ -62,10 +66,11 @@ Do this **proactively, in the moment**, even when none of these are blocking —
 together they show where the repo needs sanding. Distinct from git history
 (what shipped) and from issue trackers (real bugs / tracked work).
 
-To sand later: use the **papercuts** skill, or ask to "fix the papercuts" /
-"sand PAPERCUTS.md". Analysis is **cluster-first light-causal** (not formal
-RCA per item). If `papercut` is missing from PATH, run the installed skill
-script or see the papercuts package README.
+To sand later: use the **papercuts** skill ("fix the papercuts"). Analysis is
+**cluster-first light-causal** (not formal RCA per item). Clear fixed entries
+with `papercut resolve` (not hand-delete) so history is kept for
+**papercuts-kaizen**. If `papercut` is missing from PATH, see the papercuts
+package README.
 {MARKER_END}
 """
 
@@ -74,16 +79,23 @@ ENTRY_RE = re.compile(
     re.MULTILINE,
 )
 
-SUBCOMMANDS = {"log", "list", "path", "init", "install", "enable", "status"}
+SUBCOMMANDS = {
+    "log",
+    "list",
+    "path",
+    "init",
+    "install",
+    "enable",
+    "status",
+    "resolve",
+    "history",
+}
 
 
 def package_root() -> Path:
-    """Repo root when running from a checkout; else skill install parent."""
     here = Path(__file__).resolve().parent
-    # scripts/papercut → package root is parent of scripts/
     if (here.parent / "SKILL.md").exists() or (here.parent / "skills" / "papercuts").exists():
         return here.parent
-    # installed as ~/.*/skills/papercuts/scripts/papercut
     if here.parent.name == "papercuts" and (here.parent / "SKILL.md").exists():
         return here.parent
     return here.parent
@@ -97,8 +109,16 @@ def find_repo_root(start: Path) -> Path:
     return start
 
 
+def repo_root(start: Path | None = None) -> Path:
+    return find_repo_root(start or Path.cwd())
+
+
 def log_path(start: Path | None = None) -> Path:
-    return find_repo_root(start or Path.cwd()) / LOG_NAME
+    return repo_root(start) / LOG_NAME
+
+
+def history_path(start: Path | None = None) -> Path:
+    return repo_root(start) / HISTORY_DIR / HISTORY_NAME
 
 
 def default_model() -> str:
@@ -136,6 +156,82 @@ def ensure_header(path: Path) -> None:
         path.write_text(HEADER, encoding="utf-8")
 
 
+def append_history(root: Path, event: dict) -> Path:
+    """Append one JSON object to the shadow ledger. Best-effort path creation."""
+    path = root / HISTORY_DIR / HISTORY_NAME
+    path.parent.mkdir(parents=True, exist_ok=True)
+    event = dict(event)
+    event.setdefault("ts", utc_now_stamp())
+    event.setdefault("repo_root", str(root))
+    with path.open("a", encoding="utf-8") as f:
+        f.write(json.dumps(event, ensure_ascii=False) + "\n")
+    return path
+
+
+def read_history(root: Path) -> list[dict]:
+    path = root / HISTORY_DIR / HISTORY_NAME
+    if not path.exists():
+        return []
+    events: list[dict] = []
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            events.append(json.loads(line))
+        except json.JSONDecodeError:
+            continue
+    return events
+
+
+def parse_entries(text: str) -> list[dict]:
+    matches = list(ENTRY_RE.finditer(text))
+    if not matches:
+        return []
+    entries: list[dict] = []
+    for i, m in enumerate(matches):
+        start = m.start()
+        end = matches[i + 1].start() if i + 1 < len(matches) else len(text)
+        block = text[start:end].strip()
+        lines = block.splitlines()
+        body = "\n".join(lines[1:]).strip()
+        entries.append(
+            {
+                "stamp": m.group(1),
+                "model": m.group(2),
+                "author": m.group(3),
+                "body": body,
+                "start": start,
+                "end": end,
+            }
+        )
+    return entries
+
+
+def split_header_and_body(text: str) -> tuple[str, str]:
+    """Return (header_prefix, rest). Header is everything before first entry."""
+    m = ENTRY_RE.search(text)
+    if not m:
+        return text if text.strip() else HEADER, ""
+    return text[: m.start()], text[m.start() :]
+
+
+def rewrite_log_without(path: Path, remove_stamps: set[str]) -> list[dict]:
+    """Remove entries whose stamp is in remove_stamps. Returns removed entries."""
+    text = path.read_text(encoding="utf-8") if path.exists() else HEADER
+    entries = parse_entries(text)
+    removed = [e for e in entries if e["stamp"] in remove_stamps]
+    keep = [e for e in entries if e["stamp"] not in remove_stamps]
+    header, _ = split_header_and_body(text)
+    if not header.strip():
+        header = HEADER
+    parts = [header.rstrip() + "\n\n"]
+    for e in keep:
+        parts.append(f"{e['stamp']} - {e['model']} - {e['author']}\n\n{e['body']}\n\n")
+    path.write_text("".join(parts), encoding="utf-8")
+    return removed
+
+
 def cmd_init(args: argparse.Namespace) -> int:
     path = log_path(Path(args.cwd) if args.cwd else None)
     if path.exists() and path.stat().st_size > 0 and not args.force:
@@ -160,37 +256,28 @@ def cmd_log(args: argparse.Namespace) -> int:
     model = (args.model or default_model()).strip()
     author = (args.author or default_author()).strip()
     stamp = utc_now_stamp()
-    path = log_path(Path(args.cwd) if args.cwd else None)
+    root = repo_root(Path(args.cwd) if args.cwd else None)
+    path = root / LOG_NAME
     ensure_header(path)
     entry = f"{stamp} - {model} - {author}\n\n{message}\n\n"
     with path.open("a", encoding="utf-8") as f:
         f.write(entry)
+
+    hist = append_history(
+        root,
+        {
+            "event": "logged",
+            "entry_stamp": stamp,
+            "model": model,
+            "author": author,
+            "body": message,
+        },
+    )
     print(f"logged → {path}")
+    print(f"  history → {hist}")
     print(f"  {stamp} - {model} - {author}")
     print(f"  {message}")
     return 0
-
-
-def parse_entries(text: str) -> list[dict]:
-    matches = list(ENTRY_RE.finditer(text))
-    if not matches:
-        return []
-    entries: list[dict] = []
-    for i, m in enumerate(matches):
-        start = m.start()
-        end = matches[i + 1].start() if i + 1 < len(matches) else len(text)
-        block = text[start:end].strip()
-        lines = block.splitlines()
-        body = "\n".join(lines[1:]).strip()
-        entries.append(
-            {
-                "stamp": m.group(1),
-                "model": m.group(2),
-                "author": m.group(3),
-                "body": body,
-            }
-        )
-    return entries
 
 
 def cmd_list(args: argparse.Namespace) -> int:
@@ -213,60 +300,215 @@ def cmd_list(args: argparse.Namespace) -> int:
     return 0
 
 
-def skill_source_dir() -> Path:
-    root = package_root()
-    nested = root / "skills" / "papercuts"
-    if (nested / "SKILL.md").exists():
-        return nested
-    if (root / "SKILL.md").exists():
-        return root
-    raise SystemExit(f"error: cannot find SKILL.md under {root}")
+def cmd_resolve(args: argparse.Namespace) -> int:
+    """Remove open entries and append event=resolved to shadow history."""
+    root = repo_root(Path(args.cwd) if args.cwd else None)
+    path = root / LOG_NAME
+    if not path.exists():
+        print(f"error: no {path}", file=sys.stderr)
+        return 1
+
+    text = path.read_text(encoding="utf-8")
+    entries = parse_entries(text)
+    if not entries:
+        print("(empty log — nothing to resolve)", file=sys.stderr)
+        return 1
+
+    note = (args.note or "").strip()
+    if not note:
+        print("error: -n/--note is required (one-line what you fixed)", file=sys.stderr)
+        return 2
+
+    selected: list[dict] = []
+    stamps = list(args.stamp or [])
+    contains = args.contains
+    indices = list(args.index or [])
+
+    if stamps:
+        stamp_set = set(stamps)
+        selected = [e for e in entries if e["stamp"] in stamp_set]
+        missing = stamp_set - {e["stamp"] for e in selected}
+        if missing:
+            print(f"error: stamp(s) not in open log: {sorted(missing)}", file=sys.stderr)
+            return 1
+    elif contains:
+        needle = contains.lower()
+        selected = [e for e in entries if needle in e["body"].lower()]
+        if not selected:
+            print(f"error: no open entries matching --contains {contains!r}", file=sys.stderr)
+            return 1
+    elif indices:
+        # 1-based as shown in `papercut list` (newest first)
+        ordered = list(reversed(entries))
+        for idx in indices:
+            if idx < 1 or idx > len(ordered):
+                print(f"error: index {idx} out of range 1..{len(ordered)}", file=sys.stderr)
+                return 1
+            selected.append(ordered[idx - 1])
+        # de-dupe preserving order
+        seen = set()
+        uniq = []
+        for e in selected:
+            if e["stamp"] not in seen:
+                seen.add(e["stamp"])
+                uniq.append(e)
+        selected = uniq
+    else:
+        print(
+            "error: select entries with --stamp, --contains, or --index",
+            file=sys.stderr,
+        )
+        return 2
+
+    remove = {e["stamp"] for e in selected}
+    removed = rewrite_log_without(path, remove)
+    hist = history_path(root)
+    for e in removed:
+        append_history(
+            root,
+            {
+                "event": "resolved",
+                "entry_stamp": e["stamp"],
+                "model": e["model"],
+                "author": e["author"],
+                "body": e["body"],
+                "note": note,
+                "resolved_by": default_author(),
+            },
+        )
+
+    print(f"resolved {len(removed)} entr{'y' if len(removed) == 1 else 'ies'} → {path}")
+    print(f"  history → {hist}")
+    print(f"  note: {note}")
+    for e in removed:
+        print(f"  - {e['stamp']}: {e['body'][:80]}{'…' if len(e['body']) > 80 else ''}")
+    return 0
+
+
+def cmd_history(args: argparse.Namespace) -> int:
+    root = repo_root(Path(args.cwd) if args.cwd else None)
+    events = read_history(root)
+    path = history_path(root)
+
+    if args.stats:
+        if not events:
+            print(f"(no history at {path})")
+            return 0
+        by_event = Counter(e.get("event", "?") for e in events)
+        print(f"{path}")
+        print(f"total_events={len(events)}")
+        for k, v in sorted(by_event.items()):
+            print(f"  {k}={v}")
+
+        # Recurrence: body text logged again after a resolve of same stamp's body
+        # Simple: normalize body, count logged vs resolved
+        logged_bodies = [
+            e.get("body", "").strip().lower()
+            for e in events
+            if e.get("event") == "logged" and e.get("body")
+        ]
+        resolved_bodies = [
+            e.get("body", "").strip().lower()
+            for e in events
+            if e.get("event") == "resolved" and e.get("body")
+        ]
+        body_log_counts = Counter(logged_bodies)
+        multi = [(b, c) for b, c in body_log_counts.items() if c >= 2]
+        multi.sort(key=lambda x: -x[1])
+        print(f"unique_logged_bodies={len(body_log_counts)}")
+        print(f"bodies_logged_gte_2={len(multi)}")
+        print(f"resolved_count={len(resolved_bodies)}")
+        if multi:
+            print("\ntop repeated bodies (logged count):")
+            for b, c in multi[:10]:
+                preview = b[:90] + ("…" if len(b) > 90 else "")
+                print(f"  {c}x  {preview}")
+        return 0
+
+    if not events:
+        print(f"(no history at {path})")
+        return 0
+
+    filtered = events
+    if args.event:
+        filtered = [e for e in events if e.get("event") == args.event]
+    # newest last in file; show newest first
+    shown = list(reversed(filtered))
+    if args.n is not None:
+        shown = shown[: args.n]
+
+    print(f"{path}  ({len(filtered)} matching, showing {len(shown)})\n")
+    for e in shown:
+        ev = e.get("event", "?")
+        stamp = e.get("entry_stamp") or e.get("ts", "")
+        body = e.get("body", "")
+        note = e.get("note", "")
+        print(f"{ev:8}  {stamp}  [{e.get('model', '?')}]")
+        if body:
+            print(f"         {body}")
+        if note:
+            print(f"         fix: {note}")
+        print()
+    return 0
+
+
+def skill_dirs_to_install(args: argparse.Namespace) -> list[Path]:
+    home = Path.home()
+    bases: list[Path] = []
+    if args.claude or args.grok or args.agents:
+        if args.claude:
+            bases.append(home / ".claude" / "skills")
+        if args.grok:
+            bases.append(home / ".grok" / "skills")
+        if args.agents:
+            bases.append(home / ".agents" / "skills")
+    else:
+        bases = [home / ".claude" / "skills", home / ".grok" / "skills"]
+    return bases
 
 
 def cmd_install(args: argparse.Namespace) -> int:
-    """Install skill into common agent skill dirs + PATH symlink."""
+    """Install papercuts + papercuts-kaizen skills and CLI symlink."""
     root = package_root()
-    skill_md = root / "SKILL.md"
-    if not skill_md.exists():
-        skill_md = skill_source_dir() / "SKILL.md"
     scripts_src = root / "scripts" / "papercut"
     if not scripts_src.exists():
         scripts_src = Path(__file__).resolve()
 
-    home = Path.home()
-    if args.claude or args.grok or args.agents:
-        targets = []
-        if args.claude:
-            targets.append(home / ".claude" / "skills" / "papercuts")
-        if args.grok:
-            targets.append(home / ".grok" / "skills" / "papercuts")
-        if args.agents:
-            targets.append(home / ".agents" / "skills" / "papercuts")
-    else:
-        targets = [
-            home / ".claude" / "skills" / "papercuts",
-            home / ".grok" / "skills" / "papercuts",
-        ]
+    skills_to_install: list[tuple[str, Path]] = []
+    # Main skill: prefer nested, fall back to root SKILL.md
+    main = root / "skills" / "papercuts" / "SKILL.md"
+    if not main.exists():
+        main = root / "SKILL.md"
+    if main.exists():
+        skills_to_install.append(("papercuts", main))
+    kaizen = root / "skills" / "papercuts-kaizen" / "SKILL.md"
+    if kaizen.exists():
+        skills_to_install.append(("papercuts-kaizen", kaizen))
 
-    for dest in targets:
-        if dest.exists() or dest.is_symlink():
-            if dest.is_symlink():
-                dest.unlink()
-            elif dest.is_dir():
-                shutil.rmtree(dest)
-        dest.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(skill_md, dest / "SKILL.md")
-        (dest / "scripts").mkdir(exist_ok=True)
-        shutil.copy2(scripts_src, dest / "scripts" / "papercut")
-        os.chmod(dest / "scripts" / "papercut", 0o755)
-        print(f"installed skill → {dest}")
+    if not skills_to_install:
+        print("error: no SKILL.md found to install", file=sys.stderr)
+        return 1
 
-    local_bin = home / ".local" / "bin"
+    for base in skill_dirs_to_install(args):
+        for name, skill_md in skills_to_install:
+            dest = base / name
+            if dest.exists() or dest.is_symlink():
+                if dest.is_symlink():
+                    dest.unlink()
+                elif dest.is_dir():
+                    shutil.rmtree(dest)
+            dest.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(skill_md, dest / "SKILL.md")
+            (dest / "scripts").mkdir(exist_ok=True)
+            shutil.copy2(scripts_src, dest / "scripts" / "papercut")
+            os.chmod(dest / "scripts" / "papercut", 0o755)
+            print(f"installed skill → {dest}")
+
+    local_bin = Path.home() / ".local" / "bin"
     local_bin.mkdir(parents=True, exist_ok=True)
     link = local_bin / "papercut"
     if link.exists() or link.is_symlink():
         link.unlink()
-    # Prefer linking the package checkout so updates are one git pull away
     link.symlink_to(scripts_src.resolve())
     os.chmod(scripts_src, 0o755)
     print(f"installed CLI  → {link} -> {scripts_src.resolve()}")
@@ -276,20 +518,18 @@ def cmd_install(args: argparse.Namespace) -> int:
             file=sys.stderr,
         )
     print("done. In any project: papercut enable")
+    print("sand: /papercuts · long cycle: /papercuts-kaizen")
     return 0
 
 
 def cmd_enable(args: argparse.Namespace) -> int:
-    """Append AGENTS.md snippet + init PAPERCUTS.md in the current project."""
-    root = find_repo_root(Path(args.cwd) if args.cwd else Path.cwd())
+    root = repo_root(Path(args.cwd) if args.cwd else None)
     agents = root / "AGENTS.md"
-    # Prefer AGENTS.md; also support CLAUDE.md if only that exists
     target = agents
     if not agents.exists() and (root / "CLAUDE.md").exists() and args.prefer_claude:
         target = root / "CLAUDE.md"
 
     snippet = AGENTS_SNIPPET
-    # Allow template override from package
     tpl = package_root() / "templates" / "AGENTS.snippet.md"
     if tpl.exists():
         snippet = tpl.read_text(encoding="utf-8")
@@ -299,9 +539,17 @@ def cmd_enable(args: argparse.Namespace) -> int:
     if target.exists():
         text = target.read_text(encoding="utf-8")
         if MARKER_BEGIN in text and not args.force:
-            print(f"already enabled in {target} (use --force to replace block)")
+            # only skip if real line markers exist
+            if re.search(rf"^{re.escape(MARKER_BEGIN)}\s*$", text, re.M):
+                print(f"already enabled in {target} (use --force to replace block)")
+            else:
+                text = text.rstrip() + "\n\n" + snippet
+                target.write_text(text if text.endswith("\n") else text + "\n", encoding="utf-8")
+                print(f"updated {target}")
         else:
-            if MARKER_BEGIN in text and MARKER_END in text:
+            if re.search(rf"^{re.escape(MARKER_BEGIN)}\s*$", text, re.M) and re.search(
+                rf"^{re.escape(MARKER_END)}\s*$", text, re.M
+            ):
                 text = re.sub(
                     re.escape(MARKER_BEGIN) + r".*?" + re.escape(MARKER_END),
                     snippet.strip(),
@@ -320,7 +568,6 @@ def cmd_enable(args: argparse.Namespace) -> int:
         )
         print(f"created {target}")
 
-    # init log
     path = root / LOG_NAME
     if not path.exists() or args.force_log:
         path.write_text(HEADER, encoding="utf-8")
@@ -328,18 +575,24 @@ def cmd_enable(args: argparse.Namespace) -> int:
     else:
         print(f"log exists {path}")
 
+    hist_dir = root / HISTORY_DIR
+    hist_dir.mkdir(parents=True, exist_ok=True)
+    hist = hist_dir / HISTORY_NAME
+    if not hist.exists():
+        hist.write_text("", encoding="utf-8")
+        print(f"created {hist} (shadow ledger for kaizen)")
+    else:
+        print(f"history exists {hist}")
+
+    # optional gitignore note — do not force ignore history
     print(
-        "\nNext: ensure the papercuts skill is installed (`papercut install`), "
-        "then agents will log mid-work. Sand with: \"fix the papercuts\"."
+        "\nNext: agents log mid-work; sand with \"fix the papercuts\"; "
+        "quarterly patterns with \"papercuts kaizen\"."
     )
     return 0
 
 
 def _snippet_status(root: Path) -> tuple[str, Path | None]:
-    """Return (missing|present|partial, path_checked).
-
-    Markers must appear as their own lines (not only mentioned in docs/tables).
-    """
     begin_line = re.compile(rf"^{re.escape(MARKER_BEGIN)}\s*$", re.MULTILINE)
     end_line = re.compile(rf"^{re.escape(MARKER_END)}\s*$", re.MULTILINE)
     heading = re.compile(r"^##\s+Log papercuts\b", re.MULTILINE | re.IGNORECASE)
@@ -351,21 +604,19 @@ def _snippet_status(root: Path) -> tuple[str, Path | None]:
         text = p.read_text(encoding="utf-8", errors="replace")
         if begin_line.search(text) and end_line.search(text):
             return "present", p
-        # Heuristic: section heading without markers (manual paste)
         if heading.search(text):
             return "present", p
         if re.search(r"\bpapercut\b", text, re.IGNORECASE) and "PAPERCUTS.md" in text:
             return "partial", p
-    # Prefer reporting AGENTS.md as the expected home
     return "missing", root / "AGENTS.md"
 
 
 def cmd_status(args: argparse.Namespace) -> int:
-    """Report project enablement + CLI readiness (for skill bootstrap gate)."""
     start = Path(args.cwd) if args.cwd else Path.cwd()
     root = find_repo_root(start)
     has_git = (root / ".git").exists()
     log = root / LOG_NAME
+    hist = root / HISTORY_DIR / HISTORY_NAME
     snippet_state, snippet_path = _snippet_status(root)
 
     entry_count = 0
@@ -375,18 +626,24 @@ def cmd_status(args: argparse.Namespace) -> int:
         entry_count = len(entries)
         log_state = "empty" if entry_count == 0 else "has_entries"
 
+    hist_events = read_history(root) if hist.exists() else []
+    hist_state = "missing"
+    if hist.exists():
+        hist_state = "empty" if not hist_events else "has_events"
+
     cli = shutil.which("papercut")
     skill_hits = []
     home = Path.home()
-    for p in (
-        home / ".claude" / "skills" / "papercuts" / "SKILL.md",
-        home / ".grok" / "skills" / "papercuts" / "SKILL.md",
-        home / ".agents" / "skills" / "papercuts" / "SKILL.md",
-    ):
-        if p.exists():
-            skill_hits.append(str(p))
+    for skill_name in ("papercuts", "papercuts-kaizen"):
+        for base in (
+            home / ".claude" / "skills",
+            home / ".grok" / "skills",
+            home / ".agents" / "skills",
+        ):
+            p = base / skill_name / "SKILL.md"
+            if p.exists():
+                skill_hits.append(str(p))
 
-    # Machine-readable lines for agents + human summary
     print(f"repo_root={root}")
     print(f"git={str(has_git).lower()}")
     print(f"snippet={snippet_state}")
@@ -394,13 +651,15 @@ def cmd_status(args: argparse.Namespace) -> int:
     print(f"log={log_state}")
     print(f"log_path={log}")
     print(f"log_entries={entry_count}")
+    print(f"history={hist_state}")
+    print(f"history_path={hist}")
+    print(f"history_events={len(hist_events)}")
     print(f"cli_on_path={str(bool(cli)).lower()}")
     print(f"cli_path={cli or ''}")
-    print(f"skill_installed={str(bool(skill_hits)).lower()}")
+    print(f"skill_installed={str(any('papercuts/SKILL' in s or s.endswith('papercuts/SKILL.md') for s in skill_hits)).lower()}")
     for s in skill_hits:
         print(f"skill_path={s}")
 
-    # present snippet + log file (even if empty) == enabled
     needs_enable = snippet_state != "present" or log_state == "missing"
     print(f"project_enabled={str(not needs_enable).lower()}")
     print(f"needs_enable={str(needs_enable).lower()}")
@@ -412,7 +671,7 @@ def cmd_status(args: argparse.Namespace) -> int:
         print(
             "\nProject is not fully enabled for future capture.\n"
             f"  Ask the user, then run:  {hint}\n"
-            "  That adds the AGENTS.md snippet + creates PAPERCUTS.md.",
+            "  That adds the AGENTS.md snippet + creates PAPERCUTS.md + history ledger.",
             file=sys.stderr,
         )
         return 1
@@ -422,7 +681,7 @@ def cmd_status(args: argparse.Namespace) -> int:
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="papercut",
-        description="Log agent friction to PAPERCUTS.md (platform-agnostic).",
+        description="Log agent friction to PAPERCUTS.md + shadow history (platform-agnostic).",
     )
     p.add_argument("-C", "--cwd", default=None, help="start directory for repo discovery")
     sub = p.add_subparsers(dest="command")
@@ -432,14 +691,57 @@ def build_parser() -> argparse.ArgumentParser:
     log_p.add_argument("-a", "--author", default=None)
     log_p.add_argument("message", nargs="+")
 
-    list_p = sub.add_parser("list", help="list entries (newest first)")
+    list_p = sub.add_parser("list", help="list open entries (newest first)")
     list_p.add_argument("-n", type=int, default=None)
+
+    res = sub.add_parser(
+        "resolve",
+        help="clear open entries after a fix; append to shadow history",
+    )
+    res.add_argument(
+        "-n",
+        "--note",
+        required=True,
+        help="one-line description of the preventive fix",
+    )
+    res.add_argument(
+        "--stamp",
+        action="append",
+        default=None,
+        help="entry timestamp to resolve (repeatable)",
+    )
+    res.add_argument(
+        "--contains",
+        default=None,
+        help="resolve all open entries whose body contains this text",
+    )
+    res.add_argument(
+        "--index",
+        type=int,
+        action="append",
+        default=None,
+        help="1-based index from `papercut list` (newest first); repeatable",
+    )
+
+    hist = sub.add_parser("history", help="read shadow ledger (.papercuts/history.jsonl)")
+    hist.add_argument("-n", type=int, default=None, help="show N newest")
+    hist.add_argument(
+        "--event",
+        choices=("logged", "resolved"),
+        default=None,
+        help="filter by event type",
+    )
+    hist.add_argument(
+        "--stats",
+        action="store_true",
+        help="summary counts and repeated bodies",
+    )
 
     sub.add_parser("path", help="print path to PAPERCUTS.md")
     init_p = sub.add_parser("init", help="create PAPERCUTS.md with header")
     init_p.add_argument("-f", "--force", action="store_true")
 
-    inst = sub.add_parser("install", help="install skill + CLI on this machine")
+    inst = sub.add_parser("install", help="install skills + CLI on this machine")
     inst.add_argument("--claude", action="store_true", help="only ~/.claude/skills")
     inst.add_argument("--grok", action="store_true", help="only ~/.grok/skills")
     inst.add_argument("--agents", action="store_true", help="only ~/.agents/skills")
@@ -453,10 +755,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="if AGENTS.md missing, use CLAUDE.md when present",
     )
 
-    sub.add_parser(
-        "status",
-        help="check whether this repo has AGENTS snippet + PAPERCUTS.md",
-    )
+    sub.add_parser("status", help="check project setup + history ledger")
 
     p.add_argument("-m", "--model", default=None, help=argparse.SUPPRESS)
     p.add_argument("-a", "--author", default=None, help=argparse.SUPPRESS)
@@ -502,6 +801,8 @@ def main(argv: list[str] | None = None) -> int:
         "install": cmd_install,
         "enable": cmd_enable,
         "status": cmd_status,
+        "resolve": cmd_resolve,
+        "history": cmd_history,
     }
     fn = dispatch.get(args.command)
     if not fn:

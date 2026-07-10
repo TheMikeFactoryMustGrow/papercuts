@@ -14,8 +14,9 @@ Do this **proactively, in the moment**, even when none of these are blocking —
 together they show where the repo needs sanding. Distinct from git history
 (what shipped) and from issue trackers (real bugs / tracked work).
 
-To sand later: use the **papercuts** skill, or ask to "fix the papercuts" /
-"sand PAPERCUTS.md". Analysis is **cluster-first light-causal** (not formal
-RCA per item). If `papercut` is missing from PATH, run the installed skill
-script or see the papercuts package README.
+To sand later: use the **papercuts** skill ("fix the papercuts"). Analysis is
+**cluster-first light-causal** (not formal RCA per item). Clear fixed entries
+with `papercut resolve` (not hand-delete) so history is kept for
+**papercuts-kaizen**. If `papercut` is missing from PATH, see the papercuts
+package README.
 <!-- papercuts:end -->
