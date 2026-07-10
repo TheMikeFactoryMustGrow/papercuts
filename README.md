@@ -17,6 +17,8 @@ Paste this to an agent that can run shell commands:
 2) Run: chmod +x scripts/papercut && ./scripts/papercut install
 3) In my project repo: run papercut status; if needs_enable, ask me then papercut enable.
 4) Confirm with papercut status (project_enabled=true).
+5) Do NOT put ambient papercuts logging in home/global AGENTS — only a short
+   per-repo pointer (templates/HOME-AGENTS.snippet.md). Capture is project-scoped.
 ```
 
 Or, if the skill is **already** installed on the machine, in any project:
@@ -24,7 +26,14 @@ Or, if the skill is **already** installed on the machine, in any project:
 > Set up papercuts in this repo
 
 The **papercuts** skill checks status and **asks before** writing AGENTS.md /
-PAPERCUTS.md. Later: “fix the papercuts”. Quarterly: “papercuts kaizen”.
+`.agent-papercuts/`. Later: “fix the papercuts”. Quarterly: “papercuts kaizen”.
+
+**Home vs project:** ambient “log friction mid-task” belongs in the **project**
+`AGENTS.md` after `enable`. Home/global agent briefs should only note that
+papercuts is per-repo — see [`docs/HOME-VS-REPO.md`](./docs/HOME-VS-REPO.md) and
+[`templates/HOME-AGENTS.snippet.md`](./templates/HOME-AGENTS.snippet.md).
+
+**New repos:** [`templates/new-repo-checklist.md`](./templates/new-repo-checklist.md).
 
 | Audience | Read this |
 |----------|-----------|

@@ -57,6 +57,12 @@ on-ramp.
 Summarize from `README.md` + `docs/DESIGN.md`. Offer install + enable. Emphasize
 **three pieces**: machine skill/CLI, project AGENTS snippet, project `.agent-papercuts/`.
 
+### D) Home / global AGENTS
+
+If the user asks to “add papercuts to my global AGENTS,” paste only
+`templates/HOME-AGENTS.snippet.md` (pointer). **Do not** paste the full project
+ambient-log block into home. See `docs/HOME-VS-REPO.md`.
+
 ## What not to do
 
 | Don’t | Why |
@@ -64,7 +70,8 @@ Summarize from `README.md` + `docs/DESIGN.md`. Offer install + enable. Emphasize
 | Rewrite a new RCA skill per project | SKILL.md already defines sand protocol |
 | Run formal 5-Why on every log line | Spec is cluster-first light-causal |
 | Auto-edit the user’s home AGENTS without asking | Promotion is proposal-only |
-| Put all friction in one global log | Logs are per git root |
+| Put ambient log instructions in **home** AGENTS | Capture is per-repo after `enable` |
+| Put all friction in one global log | Logs are per git root under `.agent-papercuts/` |
 | File Linear/GitHub issues for every papercut | Different system; papercuts are sanding |
 
 ## If improving this package
