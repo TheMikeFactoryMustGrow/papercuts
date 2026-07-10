@@ -24,7 +24,7 @@ friction mid-task
 
 ```
 bootstrap (above)
-    → locate PAPERCUTS.md
+    → locate open log (`papercut path`)
     → empty? stop (empty-ok)
     → load + cluster by shared preventive fix
     → light-causal diagnose + classify (fixable / defer / reclassify / promote)

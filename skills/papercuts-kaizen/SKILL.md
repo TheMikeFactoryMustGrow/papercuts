@@ -17,8 +17,8 @@ metadata:
 ## Goal
 
 **Find systemic agent-DX debt in the historical record** — not clear one open
-ticket. The open list (`PAPERCUTS.md`) is a short sensor. The **shadow ledger**
-(`.papercuts/history.jsonl`) is the compounding archive.
+ticket. The open list (`.agent-papercuts/open.md`) is a short sensor. The **shadow ledger**
+(`.agent-papercuts/history.jsonl`) is the compounding archive.
 
 ### Success (done when)
 
@@ -41,13 +41,13 @@ ticket. The open list (`PAPERCUTS.md`) is a short sensor. The **shadow ledger**
 
 | Source | Path | Role |
 |--------|------|------|
-| Shadow ledger | `.papercuts/history.jsonl` | `logged` + `resolved` events (primary) |
-| Open list | `PAPERCUTS.md` | Still-open friction |
+| Shadow ledger | `.agent-papercuts/history.jsonl` | `logged` + `resolved` events (primary) |
+| Open list | `.agent-papercuts/open.md` | Still-open friction |
 | Stats | `papercut history --stats` | Quick counts / repeats |
 
 **Retention model:** open list is **delete-on-fix** via `papercut resolve`.
 Every `log` and `resolve` also appends to the ledger. Hand-deleting from
-`PAPERCUTS.md` **skips history** — call that out if you see it.
+the open log **skips history** — call that out if you see it.
 
 ---
 

@@ -1,21 +1,15 @@
 #!/usr/bin/env python3
-"""papercut — log agent friction to PAPERCUTS.md (platform-agnostic).
+"""papercut — log agent friction (platform-agnostic, collision-safe).
 
-Inspired by Steve Ruiz:
-  https://x.com/steveruizok/status/2075303919664734295
+Stores data under **.agent-papercuts/** by default so we never claim a product
+file named PAPERCUTS.md or a game package using .papercuts/.
 
-Open list (PAPERCUTS.md): delete-on-fix via `papercut resolve`.
-Shadow ledger (.papercuts/history.jsonl): append-only for long-cycle kaizen.
+Open list: delete-on-fix via `papercut resolve`.
+Shadow ledger: append-only history.jsonl for papercuts-kaizen.
 
 Usage:
   papercut "message"
-  papercut log -m <model> "message"
-  papercut list [-n N]
-  papercut resolve --stamp <ts> [-n "fix note"] ...
-  papercut resolve --contains "text" -n "fix note"
-  papercut history [-n N] [--event logged|resolved]
-  papercut history --stats
-  papercut path | init | status | enable | install
+  papercut log|list|resolve|history|path|init|status|enable|install
 """
 
 from __future__ import annotations
@@ -28,49 +22,59 @@ import re
 import shutil
 import sys
 from collections import Counter
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
-LOG_NAME = "PAPERCUTS.md"
-HISTORY_DIR = ".papercuts"
+# --- Ownership / namespace (collision avoidance) --------------------------------
+
+OWNED_MARKER = "<!-- agent-papercuts:v1 -->"
+DATA_DIR = ".agent-papercuts"
+OPEN_NAME = "open.md"
 HISTORY_NAME = "history.jsonl"
-MARKER_BEGIN = "<!-- papercuts:begin -->"
-MARKER_END = "<!-- papercuts:end -->"
 
-HEADER = """# PAPERCUTS
+# Legacy locations still *read* if they carry our ownership marker
+LEGACY_OPEN = "PAPERCUTS.md"
+LEGACY_DIR = ".papercuts"
 
-Agent-logged friction — small things that got in the way while working.
-Not a bug tracker. Not a changelog. Just a sanding list (open items only).
+MARKER_BEGIN = "<!-- agent-papercuts:begin -->"
+MARKER_END = "<!-- agent-papercuts:end -->"
+# Accept first-edition markers so re-enable does not duplicate
+LEGACY_MARKER_BEGIN = "<!-- papercuts:begin -->"
+LEGACY_MARKER_END = "<!-- papercuts:end -->"
+
+HEADER = f"""# Agent papercuts (open list)
+
+{OWNED_MARKER}
+
+This file is **agent tooling** (coding-agent friction), not product content.
+If you are building a game/app about papercuts, your product files live elsewhere;
+this tool only writes under `.agent-papercuts/` unless a legacy owned log exists.
 
 Log:   `papercut "what you were doing → what got in the way"`
-Clear: `papercut resolve --stamp <ts> -n "what you fixed"`  (writes shadow history)
-Sand:  skill **papercuts** · Longer cycle: skill **papercuts-kaizen**
+Clear: `papercut resolve --stamp <ts> -n "what you fixed"`
+Sand:  skill **papercuts** · Long cycle: **papercuts-kaizen**
 
 ---
 
 """
 
 AGENTS_SNIPPET = f"""{MARKER_BEGIN}
-## Log papercuts
+## Log agent papercuts
 
 When you hit **small friction** while working — a tool call that missed and had
 to be retried, a confusing or undocumented setup step, a flaky command, a stale
-cache, a misleading error, a non-obvious gotcha — log it to this repo's
-`PAPERCUTS.md` via:
+cache, a misleading error, a non-obvious gotcha — log it via:
 
 ```bash
 papercut -m <model> "one or two sentences: what you were doing → what got in the way"
 ```
 
-Do this **proactively, in the moment**, even when none of these are blocking —
-together they show where the repo needs sanding. Distinct from git history
-(what shipped) and from issue trackers (real bugs / tracked work).
+Data lives under **`.agent-papercuts/`** (not a root `PAPERCUTS.md`) so it does
+not collide with product files. Do this **proactively, in the moment**.
 
-To sand later: use the **papercuts** skill ("fix the papercuts"). Analysis is
-**cluster-first light-causal** (not formal RCA per item). Clear fixed entries
-with `papercut resolve` (not hand-delete) so history is kept for
-**papercuts-kaizen**. If `papercut` is missing from PATH, see the papercuts
-package README.
+Sand: skill **papercuts** ("fix the papercuts"). Clear with `papercut resolve`
+(not hand-delete). Long cycle: **papercuts-kaizen**.
 {MARKER_END}
 """
 
@@ -113,12 +117,128 @@ def repo_root(start: Path | None = None) -> Path:
     return find_repo_root(start or Path.cwd())
 
 
-def log_path(start: Path | None = None) -> Path:
-    return repo_root(start) / LOG_NAME
+def is_owned_open_file(path: Path) -> bool:
+    """True only if this file is ours — never treat foreign PAPERCUTS.md as owned."""
+    if not path.exists() or not path.is_file():
+        return False
+    try:
+        head = path.read_text(encoding="utf-8", errors="replace")[:8000]
+    except OSError:
+        return False
+    if OWNED_MARKER in head:
+        return True
+    # Legacy open logs we wrote before the marker existed
+    low = head.lower()
+    if "# papercuts" in low and "sanding list" in low and (
+        "papercut resolve" in low or "skill **papercuts**" in low or "skill: **papercuts**" in low
+    ):
+        return True
+    return False
 
 
-def history_path(start: Path | None = None) -> Path:
-    return repo_root(start) / HISTORY_DIR / HISTORY_NAME
+def is_owned_history_dir(path: Path) -> bool:
+    """History dir is ours if it only contains our history file or is under data dir."""
+    if not path.exists() or not path.is_dir():
+        return False
+    # Canonical data dir is always ours by name
+    if path.name == DATA_DIR:
+        return True
+    # Legacy .papercuts — only claim if history.jsonl looks like our events
+    hist = path / HISTORY_NAME
+    if not hist.exists():
+        return False
+    try:
+        sample = hist.read_text(encoding="utf-8", errors="replace")[:2000]
+    except OSError:
+        return False
+    return '"event": "logged"' in sample or '"event":"logged"' in sample or sample.strip() == ""
+
+
+@dataclass
+class Store:
+    root: Path
+    open_path: Path
+    history_path: Path
+    warnings: list[str]
+
+
+def resolve_store(root: Path) -> Store:
+    """Pick open + history paths with collision avoidance.
+
+    Priority:
+      1. Canonical `.agent-papercuts/` if present or no legacy owned log
+      2. Legacy `PAPERCUTS.md` / `.papercuts/` only if ownership markers match
+      3. Never write to foreign root files
+    """
+    warnings: list[str] = []
+    canonical_dir = root / DATA_DIR
+    canonical_open = canonical_dir / OPEN_NAME
+    canonical_hist = canonical_dir / HISTORY_NAME
+
+    legacy_open = root / LEGACY_OPEN
+    legacy_hist = root / LEGACY_DIR / HISTORY_NAME
+
+    # Env override (advanced)
+    env_open = os.environ.get("PAPERCUT_OPEN_PATH", "").strip()
+    env_hist = os.environ.get("PAPERCUT_HISTORY_PATH", "").strip()
+    if env_open:
+        op = Path(env_open)
+        if not op.is_absolute():
+            op = root / op
+        hp = Path(env_hist) if env_hist else op.parent / HISTORY_NAME
+        if not hp.is_absolute():
+            hp = root / hp
+        return Store(root, op, hp, warnings)
+
+    # Foreign root PAPERCUTS.md — never claim it
+    if legacy_open.exists() and not is_owned_open_file(legacy_open):
+        warnings.append(
+            f"foreign_file={legacy_open} (exists without {OWNED_MARKER}; left untouched)"
+        )
+
+    # Prefer canonical if it exists
+    if canonical_open.exists():
+        if not is_owned_open_file(canonical_open) and canonical_open.stat().st_size > 0:
+            warnings.append(
+                f"collision={canonical_open} exists but is not an owned agent-papercuts file"
+            )
+            # Fall through carefully — refuse by using a sibling name
+            alt = canonical_dir / "agent-open.md"
+            warnings.append(f"using_alternate={alt}")
+            return Store(root, alt, canonical_hist, warnings)
+        return Store(root, canonical_open, canonical_hist, warnings)
+
+    # Legacy owned open log
+    if legacy_open.exists() and is_owned_open_file(legacy_open):
+        hist = legacy_hist if legacy_hist.exists() else canonical_hist
+        if legacy_hist.exists():
+            warnings.append(f"legacy_history={legacy_hist}")
+        warnings.append(f"legacy_open={legacy_open} (owned; consider migrating to {canonical_open})")
+        return Store(root, legacy_open, hist, warnings)
+
+    # Default: canonical (create on write)
+    return Store(root, canonical_open, canonical_hist, warnings)
+
+
+def store_for(start: Path | None = None) -> Store:
+    return resolve_store(repo_root(start))
+
+
+def ensure_owned_open(path: Path) -> None:
+    """Create open log with ownership marker, or refuse foreign files."""
+    if path.exists():
+        if path.stat().st_size == 0:
+            path.write_text(HEADER, encoding="utf-8")
+            return
+        if not is_owned_open_file(path):
+            raise SystemExit(
+                f"error: refusing to write {path} — file exists and is not an "
+                f"agent-papercuts log (missing {OWNED_MARKER}). "
+                f"Your product file is safe. Use a different path or remove the conflict."
+            )
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(HEADER, encoding="utf-8")
 
 
 def default_model() -> str:
@@ -151,29 +271,21 @@ def utc_now_stamp() -> str:
     return now.strftime("%Y-%m-%dT%H:%M:%S.") + f"{now.microsecond // 1000:03d}Z"
 
 
-def ensure_header(path: Path) -> None:
-    if not path.exists() or not path.read_text(encoding="utf-8").strip():
-        path.write_text(HEADER, encoding="utf-8")
-
-
-def append_history(root: Path, event: dict) -> Path:
-    """Append one JSON object to the shadow ledger. Best-effort path creation."""
-    path = root / HISTORY_DIR / HISTORY_NAME
-    path.parent.mkdir(parents=True, exist_ok=True)
+def append_history(hist_path: Path, root: Path, event: dict) -> Path:
+    hist_path.parent.mkdir(parents=True, exist_ok=True)
     event = dict(event)
     event.setdefault("ts", utc_now_stamp())
     event.setdefault("repo_root", str(root))
-    with path.open("a", encoding="utf-8") as f:
+    with hist_path.open("a", encoding="utf-8") as f:
         f.write(json.dumps(event, ensure_ascii=False) + "\n")
-    return path
+    return hist_path
 
 
-def read_history(root: Path) -> list[dict]:
-    path = root / HISTORY_DIR / HISTORY_NAME
-    if not path.exists():
+def read_history(hist_path: Path) -> list[dict]:
+    if not hist_path.exists():
         return []
     events: list[dict] = []
-    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+    for line in hist_path.read_text(encoding="utf-8", errors="replace").splitlines():
         line = line.strip()
         if not line:
             continue
@@ -201,15 +313,12 @@ def parse_entries(text: str) -> list[dict]:
                 "model": m.group(2),
                 "author": m.group(3),
                 "body": body,
-                "start": start,
-                "end": end,
             }
         )
     return entries
 
 
 def split_header_and_body(text: str) -> tuple[str, str]:
-    """Return (header_prefix, rest). Header is everything before first entry."""
     m = ENTRY_RE.search(text)
     if not m:
         return text if text.strip() else HEADER, ""
@@ -217,13 +326,16 @@ def split_header_and_body(text: str) -> tuple[str, str]:
 
 
 def rewrite_log_without(path: Path, remove_stamps: set[str]) -> list[dict]:
-    """Remove entries whose stamp is in remove_stamps. Returns removed entries."""
     text = path.read_text(encoding="utf-8") if path.exists() else HEADER
+    if path.exists() and not is_owned_open_file(path):
+        raise SystemExit(f"error: refusing to modify foreign file {path}")
     entries = parse_entries(text)
     removed = [e for e in entries if e["stamp"] in remove_stamps]
     keep = [e for e in entries if e["stamp"] not in remove_stamps]
     header, _ = split_header_and_body(text)
     if not header.strip():
+        header = HEADER
+    if OWNED_MARKER not in header:
         header = HEADER
     parts = [header.rstrip() + "\n\n"]
     for e in keep:
@@ -232,18 +344,40 @@ def rewrite_log_without(path: Path, remove_stamps: set[str]) -> list[dict]:
     return removed
 
 
+def emit_warnings(store: Store) -> None:
+    for w in store.warnings:
+        print(f"warning: {w}", file=sys.stderr)
+
+
 def cmd_init(args: argparse.Namespace) -> int:
-    path = log_path(Path(args.cwd) if args.cwd else None)
+    store = store_for(Path(args.cwd) if args.cwd else None)
+    emit_warnings(store)
+    path = store.open_path
     if path.exists() and path.stat().st_size > 0 and not args.force:
-        print(f"already exists: {path}", file=sys.stderr)
-        return 0
+        if is_owned_open_file(path):
+            print(f"already exists: {path}", file=sys.stderr)
+            return 0
+        print(
+            f"error: {path} exists and is not owned; refusing to overwrite",
+            file=sys.stderr,
+        )
+        return 1
+    if args.force and path.exists() and not is_owned_open_file(path):
+        print(
+            f"error: refusing --force on foreign file {path}",
+            file=sys.stderr,
+        )
+        return 1
+    path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(HEADER, encoding="utf-8")
     print(path)
     return 0
 
 
 def cmd_path(args: argparse.Namespace) -> int:
-    print(log_path(Path(args.cwd) if args.cwd else None))
+    store = store_for(Path(args.cwd) if args.cwd else None)
+    emit_warnings(store)
+    print(store.open_path)
     return 0
 
 
@@ -256,15 +390,19 @@ def cmd_log(args: argparse.Namespace) -> int:
     model = (args.model or default_model()).strip()
     author = (args.author or default_author()).strip()
     stamp = utc_now_stamp()
-    root = repo_root(Path(args.cwd) if args.cwd else None)
-    path = root / LOG_NAME
-    ensure_header(path)
+    store = store_for(Path(args.cwd) if args.cwd else None)
+    emit_warnings(store)
+    try:
+        ensure_owned_open(store.open_path)
+    except SystemExit as e:
+        print(e, file=sys.stderr)
+        return 1
     entry = f"{stamp} - {model} - {author}\n\n{message}\n\n"
-    with path.open("a", encoding="utf-8") as f:
+    with store.open_path.open("a", encoding="utf-8") as f:
         f.write(entry)
-
     hist = append_history(
-        root,
+        store.history_path,
+        store.root,
         {
             "event": "logged",
             "entry_stamp": stamp,
@@ -273,7 +411,7 @@ def cmd_log(args: argparse.Namespace) -> int:
             "body": message,
         },
     )
-    print(f"logged → {path}")
+    print(f"logged → {store.open_path}")
     print(f"  history → {hist}")
     print(f"  {stamp} - {model} - {author}")
     print(f"  {message}")
@@ -281,9 +419,17 @@ def cmd_log(args: argparse.Namespace) -> int:
 
 
 def cmd_list(args: argparse.Namespace) -> int:
-    path = log_path(Path(args.cwd) if args.cwd else None)
+    store = store_for(Path(args.cwd) if args.cwd else None)
+    emit_warnings(store)
+    path = store.open_path
     if not path.exists():
-        print(f"(no {LOG_NAME} at {path.parent})", file=sys.stderr)
+        print(f"(no open log at {path})", file=sys.stderr)
+        return 1
+    if not is_owned_open_file(path):
+        print(
+            f"error: {path} is not an agent-papercuts log; refusing to list",
+            file=sys.stderr,
+        )
         return 1
     entries = parse_entries(path.read_text(encoding="utf-8"))
     if not entries:
@@ -301,11 +447,14 @@ def cmd_list(args: argparse.Namespace) -> int:
 
 
 def cmd_resolve(args: argparse.Namespace) -> int:
-    """Remove open entries and append event=resolved to shadow history."""
-    root = repo_root(Path(args.cwd) if args.cwd else None)
-    path = root / LOG_NAME
+    store = store_for(Path(args.cwd) if args.cwd else None)
+    emit_warnings(store)
+    path = store.open_path
     if not path.exists():
         print(f"error: no {path}", file=sys.stderr)
+        return 1
+    if not is_owned_open_file(path):
+        print(f"error: refusing to resolve foreign file {path}", file=sys.stderr)
         return 1
 
     text = path.read_text(encoding="utf-8")
@@ -338,15 +487,13 @@ def cmd_resolve(args: argparse.Namespace) -> int:
             print(f"error: no open entries matching --contains {contains!r}", file=sys.stderr)
             return 1
     elif indices:
-        # 1-based as shown in `papercut list` (newest first)
         ordered = list(reversed(entries))
         for idx in indices:
             if idx < 1 or idx > len(ordered):
                 print(f"error: index {idx} out of range 1..{len(ordered)}", file=sys.stderr)
                 return 1
             selected.append(ordered[idx - 1])
-        # de-dupe preserving order
-        seen = set()
+        seen: set[str] = set()
         uniq = []
         for e in selected:
             if e["stamp"] not in seen:
@@ -362,10 +509,10 @@ def cmd_resolve(args: argparse.Namespace) -> int:
 
     remove = {e["stamp"] for e in selected}
     removed = rewrite_log_without(path, remove)
-    hist = history_path(root)
     for e in removed:
         append_history(
-            root,
+            store.history_path,
+            store.root,
             {
                 "event": "resolved",
                 "entry_stamp": e["stamp"],
@@ -378,7 +525,7 @@ def cmd_resolve(args: argparse.Namespace) -> int:
         )
 
     print(f"resolved {len(removed)} entr{'y' if len(removed) == 1 else 'ies'} → {path}")
-    print(f"  history → {hist}")
+    print(f"  history → {store.history_path}")
     print(f"  note: {note}")
     for e in removed:
         print(f"  - {e['stamp']}: {e['body'][:80]}{'…' if len(e['body']) > 80 else ''}")
@@ -386,9 +533,10 @@ def cmd_resolve(args: argparse.Namespace) -> int:
 
 
 def cmd_history(args: argparse.Namespace) -> int:
-    root = repo_root(Path(args.cwd) if args.cwd else None)
-    events = read_history(root)
-    path = history_path(root)
+    store = store_for(Path(args.cwd) if args.cwd else None)
+    emit_warnings(store)
+    events = read_history(store.history_path)
+    path = store.history_path
 
     if args.stats:
         if not events:
@@ -399,9 +547,6 @@ def cmd_history(args: argparse.Namespace) -> int:
         print(f"total_events={len(events)}")
         for k, v in sorted(by_event.items()):
             print(f"  {k}={v}")
-
-        # Recurrence: body text logged again after a resolve of same stamp's body
-        # Simple: normalize body, count logged vs resolved
         logged_bodies = [
             e.get("body", "").strip().lower()
             for e in events
@@ -432,7 +577,6 @@ def cmd_history(args: argparse.Namespace) -> int:
     filtered = events
     if args.event:
         filtered = [e for e in events if e.get("event") == args.event]
-    # newest last in file; show newest first
     shown = list(reversed(filtered))
     if args.n is not None:
         shown = shown[: args.n]
@@ -454,28 +598,53 @@ def cmd_history(args: argparse.Namespace) -> int:
 
 def skill_dirs_to_install(args: argparse.Namespace) -> list[Path]:
     home = Path.home()
-    bases: list[Path] = []
     if args.claude or args.grok or args.agents:
+        bases = []
         if args.claude:
             bases.append(home / ".claude" / "skills")
         if args.grok:
             bases.append(home / ".grok" / "skills")
         if args.agents:
             bases.append(home / ".agents" / "skills")
-    else:
-        bases = [home / ".claude" / "skills", home / ".grok" / "skills"]
-    return bases
+        return bases
+    return [home / ".claude" / "skills", home / ".grok" / "skills"]
+
+
+def _safe_symlink(link: Path, target: Path) -> str:
+    """Create symlink; do not clobber an unrelated existing binary."""
+    target = target.resolve()
+    if link.exists() or link.is_symlink():
+        if link.is_symlink():
+            try:
+                if link.resolve() == target:
+                    return f"unchanged {link}"
+            except OSError:
+                pass
+            # Our previous install or broken link — replace
+            if "papercut" in str(link.resolve()) if link.exists() else True:
+                try:
+                    cur = os.readlink(link)
+                    if "papercuts" in cur or cur.endswith("papercut"):
+                        link.unlink()
+                    else:
+                        return f"skipped {link} (points elsewhere: {cur})"
+                except OSError:
+                    link.unlink()
+            else:
+                return f"skipped {link} (exists, not our symlink)"
+        else:
+            return f"skipped {link} (real file exists — not overwriting)"
+    link.symlink_to(target)
+    return f"installed CLI → {link} -> {target}"
 
 
 def cmd_install(args: argparse.Namespace) -> int:
-    """Install papercuts + papercuts-kaizen skills and CLI symlink."""
     root = package_root()
     scripts_src = root / "scripts" / "papercut"
     if not scripts_src.exists():
         scripts_src = Path(__file__).resolve()
 
     skills_to_install: list[tuple[str, Path]] = []
-    # Main skill: prefer nested, fall back to root SKILL.md
     main = root / "skills" / "papercuts" / "SKILL.md"
     if not main.exists():
         main = root / "SKILL.md"
@@ -506,24 +675,34 @@ def cmd_install(args: argparse.Namespace) -> int:
 
     local_bin = Path.home() / ".local" / "bin"
     local_bin.mkdir(parents=True, exist_ok=True)
-    link = local_bin / "papercut"
-    if link.exists() or link.is_symlink():
-        link.unlink()
-    link.symlink_to(scripts_src.resolve())
     os.chmod(scripts_src, 0o755)
-    print(f"installed CLI  → {link} -> {scripts_src.resolve()}")
+    # Prefer namespaced binary; also offer papercut if safe
+    print(_safe_symlink(local_bin / "agent-papercut", scripts_src.resolve()))
+    print(_safe_symlink(local_bin / "papercut", scripts_src.resolve()))
     if str(local_bin) not in os.environ.get("PATH", ""):
-        print(
-            f"note: add {local_bin} to PATH if `papercut` is not found",
-            file=sys.stderr,
-        )
-    print("done. In any project: papercut enable")
-    print("sand: /papercuts · long cycle: /papercuts-kaizen")
+        print(f"note: add {local_bin} to PATH", file=sys.stderr)
+    print("done. In any project: papercut enable   (or agent-papercut enable)")
+    print("data dir: .agent-papercuts/  (never overwrites foreign PAPERCUTS.md)")
     return 0
+
+
+def _snippet_markers_present(text: str) -> bool:
+    for begin, end in (
+        (MARKER_BEGIN, MARKER_END),
+        (LEGACY_MARKER_BEGIN, LEGACY_MARKER_END),
+    ):
+        if re.search(rf"^{re.escape(begin)}\s*$", text, re.M) and re.search(
+            rf"^{re.escape(end)}\s*$", text, re.M
+        ):
+            return True
+    return False
 
 
 def cmd_enable(args: argparse.Namespace) -> int:
     root = repo_root(Path(args.cwd) if args.cwd else None)
+    store = resolve_store(root)
+    emit_warnings(store)
+
     agents = root / "AGENTS.md"
     target = agents
     if not agents.exists() and (root / "CLAUDE.md").exists() and args.prefer_claude:
@@ -533,30 +712,28 @@ def cmd_enable(args: argparse.Namespace) -> int:
     tpl = package_root() / "templates" / "AGENTS.snippet.md"
     if tpl.exists():
         snippet = tpl.read_text(encoding="utf-8")
-        if MARKER_BEGIN not in snippet:
+        if MARKER_BEGIN not in snippet and LEGACY_MARKER_BEGIN not in snippet:
             snippet = f"{MARKER_BEGIN}\n{snippet.rstrip()}\n{MARKER_END}\n"
 
     if target.exists():
         text = target.read_text(encoding="utf-8")
-        if MARKER_BEGIN in text and not args.force:
-            # only skip if real line markers exist
-            if re.search(rf"^{re.escape(MARKER_BEGIN)}\s*$", text, re.M):
-                print(f"already enabled in {target} (use --force to replace block)")
-            else:
-                text = text.rstrip() + "\n\n" + snippet
-                target.write_text(text if text.endswith("\n") else text + "\n", encoding="utf-8")
-                print(f"updated {target}")
+        if _snippet_markers_present(text) and not args.force:
+            print(f"already enabled in {target} (use --force to replace block)")
         else:
-            if re.search(rf"^{re.escape(MARKER_BEGIN)}\s*$", text, re.M) and re.search(
-                rf"^{re.escape(MARKER_END)}\s*$", text, re.M
-            ):
-                text = re.sub(
-                    re.escape(MARKER_BEGIN) + r".*?" + re.escape(MARKER_END),
-                    snippet.strip(),
-                    text,
-                    count=1,
-                    flags=re.DOTALL,
-                )
+            if _snippet_markers_present(text):
+                for begin, end in (
+                    (MARKER_BEGIN, MARKER_END),
+                    (LEGACY_MARKER_BEGIN, LEGACY_MARKER_END),
+                ):
+                    if begin in text and end in text:
+                        text = re.sub(
+                            re.escape(begin) + r".*?" + re.escape(end),
+                            snippet.strip(),
+                            text,
+                            count=1,
+                            flags=re.DOTALL,
+                        )
+                        break
             else:
                 text = text.rstrip() + "\n\n" + snippet
             target.write_text(text if text.endswith("\n") else text + "\n", encoding="utf-8")
@@ -568,45 +745,84 @@ def cmd_enable(args: argparse.Namespace) -> int:
         )
         print(f"created {target}")
 
-    path = root / LOG_NAME
-    if not path.exists() or args.force_log:
-        path.write_text(HEADER, encoding="utf-8")
-        print(f"created {path}")
-    else:
-        print(f"log exists {path}")
+    # Always enable into canonical namespace unless already on owned legacy
+    open_path = store.open_path
+    # If store resolved to foreign collision alternate, still fine
+    if open_path == root / LEGACY_OPEN and not is_owned_open_file(open_path):
+        open_path = root / DATA_DIR / OPEN_NAME
+        print(
+            f"note: root {LEGACY_OPEN} looks like product content — using {open_path}",
+            file=sys.stderr,
+        )
 
-    hist_dir = root / HISTORY_DIR
-    hist_dir.mkdir(parents=True, exist_ok=True)
-    hist = hist_dir / HISTORY_NAME
+    if open_path.exists() and open_path.stat().st_size > 0 and not args.force_log:
+        if is_owned_open_file(open_path):
+            print(f"open log exists {open_path}")
+        else:
+            print(
+                f"error: refusing to write open log at {open_path} (not owned)",
+                file=sys.stderr,
+            )
+            return 1
+    else:
+        if open_path.exists() and not is_owned_open_file(open_path) and args.force_log:
+            print(
+                f"error: refusing --force-log on foreign file {open_path}",
+                file=sys.stderr,
+            )
+            return 1
+        open_path.parent.mkdir(parents=True, exist_ok=True)
+        open_path.write_text(HEADER, encoding="utf-8")
+        print(f"created {open_path}")
+
+    hist = store.history_path
+    # Prefer history next to open log under .agent-papercuts
+    if open_path.parent.name == DATA_DIR:
+        hist = open_path.parent / HISTORY_NAME
+    hist.parent.mkdir(parents=True, exist_ok=True)
     if not hist.exists():
         hist.write_text("", encoding="utf-8")
-        print(f"created {hist} (shadow ledger for kaizen)")
+        print(f"created {hist} (shadow ledger)")
     else:
         print(f"history exists {hist}")
 
-    # optional gitignore note — do not force ignore history
+    # Sidecar readme so humans browsing the folder know it's tooling
+    readme = open_path.parent / "README.md"
+    if open_path.parent.name == DATA_DIR and not readme.exists():
+        readme.write_text(
+            "# `.agent-papercuts/`\n\n"
+            "Agent-tooling data for the [papercuts](https://github.com/TheMikeFactoryMustGrow/papercuts) "
+            "package (coding-agent friction log). **Not product source.**\n\n"
+            f"- Open list: `{OPEN_NAME}`\n"
+            f"- History: `{HISTORY_NAME}`\n"
+            f"- Ownership marker: `{OWNED_MARKER}`\n",
+            encoding="utf-8",
+        )
+        print(f"created {readme}")
+
     print(
         "\nNext: agents log mid-work; sand with \"fix the papercuts\"; "
-        "quarterly patterns with \"papercuts kaizen\"."
+        "quarterly \"papercuts kaizen\"."
     )
     return 0
 
 
 def _snippet_status(root: Path) -> tuple[str, Path | None]:
-    begin_line = re.compile(rf"^{re.escape(MARKER_BEGIN)}\s*$", re.MULTILINE)
-    end_line = re.compile(rf"^{re.escape(MARKER_END)}\s*$", re.MULTILINE)
-    heading = re.compile(r"^##\s+Log papercuts\b", re.MULTILINE | re.IGNORECASE)
-
+    heading = re.compile(
+        r"^##\s+Log (agent )?papercuts\b", re.MULTILINE | re.IGNORECASE
+    )
     for name in ("AGENTS.md", "CLAUDE.md", "agents.md", "CLAUDE.local.md"):
         p = root / name
         if not p.exists():
             continue
         text = p.read_text(encoding="utf-8", errors="replace")
-        if begin_line.search(text) and end_line.search(text):
+        if _snippet_markers_present(text):
             return "present", p
         if heading.search(text):
             return "present", p
-        if re.search(r"\bpapercut\b", text, re.IGNORECASE) and "PAPERCUTS.md" in text:
+        if re.search(r"\bpapercut\b", text, re.IGNORECASE) and (
+            DATA_DIR in text or "PAPERCUTS.md" in text or "agent-papercuts" in text
+        ):
             return "partial", p
     return "missing", root / "AGENTS.md"
 
@@ -614,24 +830,32 @@ def _snippet_status(root: Path) -> tuple[str, Path | None]:
 def cmd_status(args: argparse.Namespace) -> int:
     start = Path(args.cwd) if args.cwd else Path.cwd()
     root = find_repo_root(start)
-    has_git = (root / ".git").exists()
-    log = root / LOG_NAME
-    hist = root / HISTORY_DIR / HISTORY_NAME
+    store = resolve_store(root)
     snippet_state, snippet_path = _snippet_status(root)
 
     entry_count = 0
     log_state = "missing"
-    if log.exists():
-        entries = parse_entries(log.read_text(encoding="utf-8", errors="replace"))
-        entry_count = len(entries)
-        log_state = "empty" if entry_count == 0 else "has_entries"
+    owned = False
+    if store.open_path.exists():
+        owned = is_owned_open_file(store.open_path)
+        if owned:
+            entries = parse_entries(
+                store.open_path.read_text(encoding="utf-8", errors="replace")
+            )
+            entry_count = len(entries)
+            log_state = "empty" if entry_count == 0 else "has_entries"
+        else:
+            log_state = "foreign"
 
-    hist_events = read_history(root) if hist.exists() else []
+    hist_events = read_history(store.history_path)
     hist_state = "missing"
-    if hist.exists():
+    if store.history_path.exists():
         hist_state = "empty" if not hist_events else "has_events"
 
-    cli = shutil.which("papercut")
+    foreign_root = root / LEGACY_OPEN
+    foreign = foreign_root.exists() and not is_owned_open_file(foreign_root)
+
+    cli = shutil.which("agent-papercut") or shutil.which("papercut")
     skill_hits = []
     home = Path.home()
     for skill_name in ("papercuts", "papercuts-kaizen"):
@@ -645,33 +869,43 @@ def cmd_status(args: argparse.Namespace) -> int:
                 skill_hits.append(str(p))
 
     print(f"repo_root={root}")
-    print(f"git={str(has_git).lower()}")
+    print(f"git={str((root / '.git').exists()).lower()}")
+    print(f"data_dir={root / DATA_DIR}")
+    print(f"owned_marker={OWNED_MARKER}")
     print(f"snippet={snippet_state}")
     print(f"snippet_path={snippet_path}")
     print(f"log={log_state}")
-    print(f"log_path={log}")
+    print(f"log_owned={str(owned).lower()}")
+    print(f"log_path={store.open_path}")
     print(f"log_entries={entry_count}")
     print(f"history={hist_state}")
-    print(f"history_path={hist}")
+    print(f"history_path={store.history_path}")
     print(f"history_events={len(hist_events)}")
+    print(f"foreign_root_PAPERCUTS_md={str(foreign).lower()}")
+    if foreign:
+        print(f"foreign_path={foreign_root}")
+    for w in store.warnings:
+        print(f"warning={w}")
     print(f"cli_on_path={str(bool(cli)).lower()}")
     print(f"cli_path={cli or ''}")
-    print(f"skill_installed={str(any('papercuts/SKILL' in s or s.endswith('papercuts/SKILL.md') for s in skill_hits)).lower()}")
+    print(
+        f"skill_installed={str(any(s.endswith('papercuts/SKILL.md') for s in skill_hits)).lower()}"
+    )
     for s in skill_hits:
         print(f"skill_path={s}")
 
-    needs_enable = snippet_state != "present" or log_state == "missing"
-    print(f"project_enabled={str(not needs_enable).lower()}")
+    needs_enable = snippet_state != "present" or log_state in ("missing", "foreign")
+    # foreign open path without owned log => need enable into safe dir
+    if log_state == "foreign":
+        needs_enable = True
+    print(f"project_enabled={str(not needs_enable and log_state != 'foreign').lower()}")
     print(f"needs_enable={str(needs_enable).lower()}")
 
     if needs_enable:
-        hint = "papercut enable"
-        if snippet_state == "partial":
-            hint = "papercut enable --force  # refresh snippet block"
         print(
-            "\nProject is not fully enabled for future capture.\n"
-            f"  Ask the user, then run:  {hint}\n"
-            "  That adds the AGENTS.md snippet + creates PAPERCUTS.md + history ledger.",
+            "\nProject is not fully enabled for agent-papercuts capture.\n"
+            "  Ask the user, then run:  papercut enable\n"
+            f"  Data goes under {DATA_DIR}/ (won’t touch foreign {LEGACY_OPEN}).",
             file=sys.stderr,
         )
         return 1
@@ -681,12 +915,12 @@ def cmd_status(args: argparse.Namespace) -> int:
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="papercut",
-        description="Log agent friction to PAPERCUTS.md + shadow history (platform-agnostic).",
+        description="Agent friction log (collision-safe .agent-papercuts/ data).",
     )
     p.add_argument("-C", "--cwd", default=None, help="start directory for repo discovery")
     sub = p.add_subparsers(dest="command")
 
-    log_p = sub.add_parser("log", help="append a papercut entry")
+    log_p = sub.add_parser("log", help="append an open-list entry + history")
     log_p.add_argument("-m", "--model", default=None)
     log_p.add_argument("-a", "--author", default=None)
     log_p.add_argument("message", nargs="+")
@@ -694,68 +928,32 @@ def build_parser() -> argparse.ArgumentParser:
     list_p = sub.add_parser("list", help="list open entries (newest first)")
     list_p.add_argument("-n", type=int, default=None)
 
-    res = sub.add_parser(
-        "resolve",
-        help="clear open entries after a fix; append to shadow history",
-    )
-    res.add_argument(
-        "-n",
-        "--note",
-        required=True,
-        help="one-line description of the preventive fix",
-    )
-    res.add_argument(
-        "--stamp",
-        action="append",
-        default=None,
-        help="entry timestamp to resolve (repeatable)",
-    )
-    res.add_argument(
-        "--contains",
-        default=None,
-        help="resolve all open entries whose body contains this text",
-    )
-    res.add_argument(
-        "--index",
-        type=int,
-        action="append",
-        default=None,
-        help="1-based index from `papercut list` (newest first); repeatable",
-    )
+    res = sub.add_parser("resolve", help="clear open entries after a fix; append history")
+    res.add_argument("-n", "--note", required=True, help="one-line preventive fix")
+    res.add_argument("--stamp", action="append", default=None)
+    res.add_argument("--contains", default=None)
+    res.add_argument("--index", type=int, action="append", default=None)
 
-    hist = sub.add_parser("history", help="read shadow ledger (.papercuts/history.jsonl)")
-    hist.add_argument("-n", type=int, default=None, help="show N newest")
-    hist.add_argument(
-        "--event",
-        choices=("logged", "resolved"),
-        default=None,
-        help="filter by event type",
-    )
-    hist.add_argument(
-        "--stats",
-        action="store_true",
-        help="summary counts and repeated bodies",
-    )
+    hist = sub.add_parser("history", help="read shadow ledger")
+    hist.add_argument("-n", type=int, default=None)
+    hist.add_argument("--event", choices=("logged", "resolved"), default=None)
+    hist.add_argument("--stats", action="store_true")
 
-    sub.add_parser("path", help="print path to PAPERCUTS.md")
-    init_p = sub.add_parser("init", help="create PAPERCUTS.md with header")
+    sub.add_parser("path", help="print path to open log")
+    init_p = sub.add_parser("init", help="create owned open log")
     init_p.add_argument("-f", "--force", action="store_true")
 
-    inst = sub.add_parser("install", help="install skills + CLI on this machine")
-    inst.add_argument("--claude", action="store_true", help="only ~/.claude/skills")
-    inst.add_argument("--grok", action="store_true", help="only ~/.grok/skills")
-    inst.add_argument("--agents", action="store_true", help="only ~/.agents/skills")
+    inst = sub.add_parser("install", help="install skills + CLI")
+    inst.add_argument("--claude", action="store_true")
+    inst.add_argument("--grok", action="store_true")
+    inst.add_argument("--agents", action="store_true")
 
-    en = sub.add_parser("enable", help="enable papercuts in current git repo")
-    en.add_argument("-f", "--force", action="store_true", help="replace existing snippet block")
-    en.add_argument("--force-log", action="store_true", help="rewrite PAPERCUTS.md header")
-    en.add_argument(
-        "--prefer-claude",
-        action="store_true",
-        help="if AGENTS.md missing, use CLAUDE.md when present",
-    )
+    en = sub.add_parser("enable", help="enable in current git repo (safe data dir)")
+    en.add_argument("-f", "--force", action="store_true")
+    en.add_argument("--force-log", action="store_true")
+    en.add_argument("--prefer-claude", action="store_true")
 
-    sub.add_parser("status", help="check project setup + history ledger")
+    sub.add_parser("status", help="setup + ownership + collision warnings")
 
     p.add_argument("-m", "--model", default=None, help=argparse.SUPPRESS)
     p.add_argument("-a", "--author", default=None, help=argparse.SUPPRESS)

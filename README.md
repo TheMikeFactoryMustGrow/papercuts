@@ -49,7 +49,7 @@ PAPERCUTS.md. Later: “fix the papercuts”. Quarterly: “papercuts kaizen”.
 
 1. Share this repo URL.  
 2. **Once per machine:** `./scripts/papercut install` (skill + `papercut` CLI).  
-3. **Once per project:** `papercut enable` (AGENTS.md **snippet** + **PAPERCUTS.md** log).  
+3. **Once per project:** `papercut enable` (AGENTS.md **snippet** + `.agent-papercuts/` data).  
 4. Work as usual — agents log mid-task.  
 5. Periodically: “fix the papercuts” / `/papercuts`.  
 6. Quarterly (or when history is rich): “papercuts kaizen” / `/papercuts-kaizen`.
@@ -76,7 +76,7 @@ Agents should **not** reinvent the sand skill in every project. They need:
 ┌─────────────────────────────────────────────────────────┐
 │  Any project repo                                       │
 │    AGENTS.md     ← snippet (papercut enable)            │
-│    PAPERCUTS.md  ← append-only sensor (per repo)        │
+│    .agent-papercuts/  ← open.md + history (namespaced)   │
 └─────────────────────────────────────────────────────────┘
 ```
 
@@ -86,15 +86,15 @@ Agents should **not** reinvent the sand skill in every project. They need:
 | **AGENTS.md** (this package) | How to install/spread papercuts | Agents in *this* repo |
 | **templates/AGENTS.snippet.md** | Drop-in block for *other* repos | Copied into project AGENTS.md |
 | **SKILL.md** | Full log + fix protocol | Agents when skill is invoked |
-| **PAPERCUTS.md** (per project) | The sanding list | Agents + humans |
+| **`.agent-papercuts/`** (per project) | Open list + history | Agents + humans |
 
 **Why not only AGENTS.md in each project?**  
 AGENTS.md is great for a short “log when you hit friction” rule. It is a poor place
 for the full fix protocol (clustering, gates, anti-patterns). That belongs in a
 **skill** so it loads only when someone asks to sand.
 
-**Why not one global PAPERCUTS.md?**  
-Friction is usually project-local. Keep the log at the **git root** of each repo.
+**Why not one global log?**  
+Friction is usually project-local. Keep the log under **`.agent-papercuts/`** in each repo.
 
 ---
 
@@ -126,8 +126,8 @@ also needs two files at the **git root**:
 | File | Purpose | How it gets there |
 |------|---------|-------------------|
 | **AGENTS.md** snippet | Tells agents to log friction mid-task | `papercut enable` |
-| **PAPERCUTS.md** | **Open** sanding list (cleared on fix) | `papercut enable` (or `init`) |
-| **`.papercuts/history.jsonl`** | **Shadow ledger** (append-only for kaizen) | Created on enable / first log |
+| **`.agent-papercuts/open.md`** | **Open** sanding list (cleared on fix) | `papercut enable` (or `init`) |
+| **`.agent-papercuts/history.jsonl`** | **Shadow ledger** (append-only for kaizen) | Created on enable / first log |
 
 ```bash
 cd /path/to/your-project
@@ -156,7 +156,7 @@ papercut status    # expect project_enabled=true
 Agent-logged friction …
 ```
 
-   Source template: [`templates/PAPERCUTS.header.md`](./templates/PAPERCUTS.header.md).
+   Source template: [`templates/open.header.md`](./templates/open.header.md).
 
 It does **not** copy `SKILL.md` into the project. The skill stays machine-global.
 
@@ -168,7 +168,7 @@ papercut enable --prefer-claude
 
 **Manual alternative** (if you prefer not to run the CLI): copy the contents of
 `templates/AGENTS.snippet.md` into your project `AGENTS.md`, and copy
-`templates/PAPERCUTS.header.md` to `PAPERCUTS.md` at the repo root.
+`templates/open.header.md` into `.agent-papercuts/open.md` (via `papercut enable`).
 
 **Check anytime:**
 
@@ -186,7 +186,7 @@ papercut status
 
 ```bash
 papercut -m claude-opus "While running tests, vitest cwd is apps/web so root-relative paths miss."
-# also appends event=logged to .papercuts/history.jsonl
+# also appends event=logged to .agent-papercuts/history.jsonl
 ```
 
 **Inspect:**
@@ -209,7 +209,7 @@ Open list shrinks; history keeps the row for long-cycle review.
 
 > Fix the papercuts  
 > /papercuts  
-> Sand PAPERCUTS.md  
+> fix the papercuts  
 
 Cluster-first light-causal; clear via `resolve` only when the fix prevents recurrence.
 
@@ -219,20 +219,20 @@ Cluster-first light-causal; clear via `resolve` only when the fix prevents recur
 > /papercuts-kaizen  
 > What friction patterns keep coming back?  
 
-Mines `.papercuts/history.jsonl` for volume, recurrence after “fixed”, and
+Mines `.agent-papercuts/history.jsonl` for volume, recurrence after “fixed”, and
 systemic proposals. Deep RCA only on escalated clusters.
 
 **First time in a repo (human → agent):**
 
 > Set up papercuts here  
 
-The skill will **not** write AGENTS.md / PAPERCUTS.md without your confirmation.
+The skill will **not** write AGENTS.md / `.agent-papercuts/` without your confirmation.
 
 ---
 
 ## Design constraints we learned
 
-See [`docs/DESIGN.md`](./docs/DESIGN.md) for the full list. Highlights:
+See [`docs/DESIGN.md`](./docs/DESIGN.md) and [`docs/COLLISIONS.md`](./docs/COLLISIONS.md). Highlights:
 
 1. **Log is a sensor; sanded surface is the product.** Emptying the file without fixes is vanity.  
 2. **Cluster-first light-causal**, not per-item 5-Why (kaizen escalates only top patterns).  
@@ -241,6 +241,7 @@ See [`docs/DESIGN.md`](./docs/DESIGN.md) for the full list. Highlights:
 5. **Promotion (global agent config) is proposal-only** — no silent home-AGENTS edits.  
 6. **Do not merge** with issue trackers or skill-ops / eval incident systems.  
 7. **Ambient log** + **user-triggered sand** + **rare kaizen** — three cadences.
+8. **Collision-safe paths** — `.agent-papercuts/` + ownership marker; never overwrite foreign `PAPERCUTS.md`.
 ---
 
 ## Repo layout

@@ -8,7 +8,7 @@ new cleanup skill from scratch.
 
 A platform-agnostic way for coding agents to:
 
-1. **Log** tiny non-blocking friction to a per-repo `PAPERCUTS.md` (+ history ledger)  
+1. **Log** tiny non-blocking friction to a per-repo `.agent-papercuts/open.md` (+ history ledger)  
 2. **Sand** open items later (cluster-first light-causal — **not** formal RCA per item) via **papercuts**  
 3. **Kaizen** on the shadow ledger quarterly via **papercuts-kaizen** (patterns / optional deep RCA)
 ## Do this when a human shares this repo
@@ -33,7 +33,7 @@ also create the **snippet** and **log**.
 ```bash
 cd /path/to/their-project
 papercut status          # see needs_enable
-papercut enable          # AGENTS.md snippet + PAPERCUTS.md
+papercut enable          # AGENTS.md snippet + `.agent-papercuts/`
 papercut status          # project_enabled=true
 ```
 
@@ -42,8 +42,8 @@ papercut status          # project_enabled=true
 | Creates / updates | Content |
 |-------------------|---------|
 | `AGENTS.md` | Marked `<!-- papercuts:begin -->…<!-- papercuts:end -->` block from `templates/AGENTS.snippet.md` |
-| `PAPERCUTS.md` | Open sanding list header |
-| `.papercuts/history.jsonl` | Shadow ledger for kaizen (append-only) |
+| `.agent-papercuts/open.md` | Open sanding list |
+| `.agent-papercuts/history.jsonl` | Shadow ledger (append-only) |
 **Do not** copy the entire SKILL.md into every project. Projects only need the
 short AGENTS snippet; the skill stays machine-global (or harness-global).
 
@@ -55,7 +55,7 @@ on-ramp.
 ### C) If they only asked “what is this?”
 
 Summarize from `README.md` + `docs/DESIGN.md`. Offer install + enable. Emphasize
-**three pieces**: machine skill/CLI, project AGENTS snippet, project PAPERCUTS.md.
+**three pieces**: machine skill/CLI, project AGENTS snippet, project `.agent-papercuts/`.
 
 ## What not to do
 
@@ -70,7 +70,7 @@ Summarize from `README.md` + `docs/DESIGN.md`. Offer install + enable. Emphasize
 ## If improving this package
 
 - Keep CLI **Python stdlib only** (no node/yarn required).  
-- Keep consumer surface **tiny** (snippet + PAPERCUTS.md).  
+- Keep consumer surface **tiny** (snippet + `.agent-papercuts/`).  
 - Skill stays the home of fix protocol depth.  
 - See `docs/DESIGN.md` before adding steps (bias to delete).
 

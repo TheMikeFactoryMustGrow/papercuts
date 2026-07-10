@@ -3,13 +3,12 @@ name: papercuts
 description: >
   Log and fix agent friction ("papercuts") — dead-end tool calls, broken links,
   flaky commands, misleading errors, undocumented gotchas. Use when the user
-  says "log a papercut", "fix papercuts", "sand the papercuts", "work through
-  PAPERCUTS.md", "enable papercuts", "set up papercuts in this repo", runs
+  says "log a papercut", "fix papercuts", "sand the papercuts", "work through agent papercuts", "enable papercuts", "set up papercuts in this repo", runs
   /papercuts, or asks what friction agents hit. Also the workflow for proactive
   in-session logging via the papercut CLI. On invoke, check whether the project
   has the AGENTS snippet and PAPERCUTS.md; offer enable if missing.
 metadata:
-  short-description: "Log/fix agent friction (PAPERCUTS.md)"
+  short-description: "Log/fix agent friction (.agent-papercuts)"
 ---
 
 # Papercuts
@@ -28,8 +27,8 @@ A project needs **three** pieces (not just the skill):
 |-------|--------|------|
 | **Skill + CLI** | Machine (`papercut install`) | How to sand + how to log |
 | **AGENTS.md snippet** | Project (`papercut enable`) | Permission to log mid-task |
-| **PAPERCUTS.md** | Project git root | Open sanding list (delete-on-fix) |
-| **`.papercuts/history.jsonl`** | Project git root | Shadow ledger for long-cycle kaizen |
+| **`.agent-papercuts/open.md`** | Project git root (namespaced) | Open sanding list (delete-on-fix) |
+| **`.agent-papercuts/history.jsonl`** | Same data dir | Shadow ledger for long-cycle kaizen |
 
 Running this skill in a **new repo** is a supported way to get the project pieces
 in place — see **Bootstrap gate** below.
@@ -69,9 +68,9 @@ Read the key fields:
 
 | Field | Meaning |
 |-------|---------|
-| `needs_enable=true` | Snippet and/or `PAPERCUTS.md` missing |
+| `needs_enable=true` | Snippet and/or owned open log missing |
 | `snippet=missing` | No papercuts block in AGENTS.md / CLAUDE.md |
-| `log=missing` | No `PAPERCUTS.md` at repo root |
+| `log=missing` | No owned open log under `.agent-papercuts/` |
 | `project_enabled=true` | Both present — proceed |
 
 ### If `needs_enable=true`
@@ -79,7 +78,7 @@ Read the key fields:
 **Stop and ask the user** (do not enable silently):
 
 > This repo doesn’t have papercuts project setup yet (AGENTS.md snippet and/or
-> PAPERCUTS.md). Enable them so future sessions can capture friction here?
+> `.agent-papercuts/` data). Enable them so future sessions can capture friction here?
 > I can run `papercut enable` (adds a short AGENTS.md block + creates the log).
 
 | User answer | Action |
@@ -137,7 +136,7 @@ Deeper causal analysis only if the **user** explicitly asks.
 
 ```bash
 papercut status                              # project setup check
-papercut enable                              # AGENTS snippet + PAPERCUTS.md + history dir
+papercut enable                              # AGENTS snippet + `.agent-papercuts/` + history dir
 papercut "one or two sentences: …"           # log (also appends history event=logged)
 papercut log -m <model-tag> -a <author> "…"
 papercut list
@@ -250,7 +249,7 @@ papercut resolve --stamp A --stamp B -n "same fix for both"
 ```
 
 Do **not** hand-edit entries out of `PAPERCUTS.md`.  
-Open list = delete-on-fix. History = `.papercuts/history.jsonl` for **papercuts-kaizen**.
+Open list = delete-on-fix. History = `.agent-papercuts/history.jsonl` for **papercuts-kaizen**.
 
 ### F8 Sanded-surface report
 
@@ -285,9 +284,9 @@ agent config / skill / PATH install. **Do not apply** without user confirmation.
 Template: package `templates/AGENTS.snippet.md`.
 
 2. **PAPERCUTS.md** at git root — header only until agents log.  
-   Template: package `templates/PAPERCUTS.header.md`.
+   Template: package `templates/open.header.md`.
 
-3. **`.papercuts/history.jsonl`** — empty shadow ledger (created on enable / first log).
+3. **`.agent-papercuts/history.jsonl`** — empty shadow ledger (created on enable / first log).
 
 It does **not** copy SKILL.md into the project. Skills stay on the machine.
 
@@ -300,7 +299,7 @@ It does **not** copy SKILL.md into the project. Skills stay on the machine.
 
 | Artifact | Purpose |
 |----------|---------|
-| `PAPERCUTS.md` | Tiny agent-DX sanding sensor |
+| `.agent-papercuts/open.md` | Tiny agent-DX sanding sensor |
 | Issue tracker | Real bugs / tracked work |
 | Git history | What shipped |
 | Skill incident / eval logs | Skill or product quality systems (keep separate) |

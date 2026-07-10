@@ -74,8 +74,8 @@ Loading nothing means agents never log.
 
 | Store | Policy | Purpose |
 |-------|--------|---------|
-| `PAPERCUTS.md` | **Delete-on-fix** via `papercut resolve` | Short open worklist |
-| `.papercuts/history.jsonl` | **Append-only** (`logged` + `resolved`) | Compounding data for kaizen |
+| `.agent-papercuts/open.md` | **Delete-on-fix** via `papercut resolve` | Short open worklist |
+| `.agent-papercuts/history.jsonl` | **Append-only** (`logged` + `resolved`) | Compounding data for kaizen |
 
 Hand-deleting open entries **without** `resolve` destroys history. Skills must
 require the CLI for clears.
