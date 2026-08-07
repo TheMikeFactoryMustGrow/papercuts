@@ -15,4 +15,7 @@ Data lives under **`.agent-papercuts/`** (open list + history), not a root
 
 Sand: skill **papercuts** ("fix the papercuts"). Clear with `papercut resolve`
 (not hand-delete). Long cycle: **papercuts-kaizen**.
+
+No `papercut` on PATH? One-time machine install (CLI → `~/.local/bin`):
+`git clone https://github.com/TheMikeFactoryMustGrow/papercuts && papercuts/scripts/papercut install`
 <!-- agent-papercuts:end -->
