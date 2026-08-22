@@ -399,8 +399,13 @@ def cmd_log(args: argparse.Namespace) -> int:
         print("error: empty message", file=sys.stderr)
         return 2
     message = re.sub(r"\s+", " ", message).strip()
-    model = (args.model or default_model()).strip()
-    author = (args.author or default_author()).strip()
+    # Header fields must be single tokens: ENTRY_RE captures model and author
+    # as \S+, so an internal space would silently fold this entry into the
+    # previous one's body on re-parse. Normalize EVERY source here (flags,
+    # PAPERCUT_AUTHOR/USER, getpass), not just the GIT_AUTHOR_NAME branch.
+    model = re.sub(r"\s+", "-", (args.model or default_model()).strip()) or "unknown"
+    author = re.sub(r"\s+", "-", (args.author or default_author()).strip()) or "agent"
+
     stamp = utc_now_stamp()
     store = store_for(Path(args.cwd) if args.cwd else None)
     emit_warnings(store)
