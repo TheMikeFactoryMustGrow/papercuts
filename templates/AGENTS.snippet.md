@@ -18,4 +18,11 @@ Sand: skill **papercuts** ("fix the papercuts"). Clear with `papercut resolve`
 
 No `papercut` on PATH? One-time machine install (CLI → `~/.local/bin`):
 `git clone https://github.com/TheMikeFactoryMustGrow/papercuts && papercuts/scripts/papercut install`
+Cannot install (restricted machine, cloud container)? The format is the tool — append by hand:
+if `.agent-papercuts/open.md` does not exist, start it with the ownership marker line
+`<!-- agent-papercuts:v1 -->` (without it the CLI treats the file as foreign and refuses it later);
+then append `<UTC ISO-8601 stamp> - <model> - <author>`, a blank line, a one-paragraph body.
+`.agent-papercuts/history.jsonl` gets ONE physical line per entry —
+`{"event": "logged", "entry_stamp": "<stamp>", "model": "…", "author": "…", "body": "…", "ts": "<stamp>", "repo_root": "<abs git root>"}`
+— string values JSON-escaped (quotes, backslashes, newlines), or the line silently drops from history views.
 <!-- agent-papercuts:end -->
