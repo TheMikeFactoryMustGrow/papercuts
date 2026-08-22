@@ -11,25 +11,33 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: CLI copies are byte-identical
-        run: |
-          cmp scripts/papercut skills/papercuts/scripts/papercut
-          cmp scripts/papercut skills/papercuts-kaizen/scripts/papercut
-
-      - name: CLI compiles (Python stdlib only)
+      - name: Syntax
         run: python3 -m py_compile scripts/papercut
 
-      - name: Smoke test (enable → log → list → resolve → status)
+      - name: Snippet parity (template path + inline-constant fallback)
         run: |
-          chmod +x scripts/papercut
+          extract() { awk '/<!-- agent-papercuts:begin -->/{f=1} f{print} /<!-- agent-papercuts:end -->/{f=0}' "$1"; }
+          extract templates/AGENTS.snippet.md > /tmp/tpl.txt
+          # enable with templates/ present writes the template verbatim
+          scratch1="$(mktemp -d)"; git -C "$scratch1" init -q
+          ./scripts/papercut -C "$scratch1" enable
+          extract "$scratch1/AGENTS.md" | cmp - /tmp/tpl.txt
+          # enable without templates/ falls back to the inline AGENTS_SNIPPET
+          pkg="$(mktemp -d)/pkg"; cp -rL . "$pkg"; rm -rf "$pkg/templates" "$pkg/.git"
+          scratch2="$(mktemp -d)"; git -C "$scratch2" init -q
+          "$pkg/scripts/papercut" -C "$scratch2" enable
+          extract "$scratch2/AGENTS.md" | cmp - /tmp/tpl.txt
+
+      - name: Behavior smoke (enable → log → resolve → history)
+        run: |
           PAPERCUT="$PWD/scripts/papercut"
-          tmp="$(mktemp -d)"
-          cd "$tmp" && git init -q
-          git config user.email ci@example.com && git config user.name CI
+          tmp="$(mktemp -d)"; cd "$tmp" && git init -q
           "$PAPERCUT" enable
-          "$PAPERCUT" status | tee status.out
-          grep -q 'project_enabled=true' status.out
+          "$PAPERCUT" status | grep -q '^project_enabled=true$'
           "$PAPERCUT" -m ci "Smoke: enable path works."
-          "$PAPERCUT" list | grep -q 'Smoke: enable path works.'
-          "$PAPERCUT" resolve --contains "Smoke" -n "Smoke resolved."
-          "$PAPERCUT" history | grep -q 'Smoke'
+          "$PAPERCUT" list | grep -q '(1 total'
+          stamp="$(grep -oE '[0-9]{4}-[0-9]{2}-[0-9]{2}T[^ ]+' .agent-papercuts/open.md | head -1)"
+          "$PAPERCUT" resolve --stamp "$stamp" -n "Smoke resolved."
+          "$PAPERCUT" list | grep -q 'empty log'
+          grep -q '"event": "logged"'   .agent-papercuts/history.jsonl
+          grep -q '"event": "resolved"' .agent-papercuts/history.jsonl
