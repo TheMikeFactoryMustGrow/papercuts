@@ -70,8 +70,9 @@ cache, a misleading error, a non-obvious gotcha — log it via:
 papercut -m <model> "one or two sentences: what you were doing → what got in the way"
 ```
 
-Data lives under **`.agent-papercuts/`** (not a root `PAPERCUTS.md`) so it does
-not collide with product files. Do this **proactively, in the moment**.
+Data lives under **`.agent-papercuts/`** (open list + history), not a root
+`PAPERCUTS.md`, so it does not collide with product files. Do this
+**proactively, in the moment**.
 
 Sand: skill **papercuts** ("fix the papercuts"). Clear with `papercut resolve`
 (not hand-delete). Long cycle: **papercuts-kaizen**.
