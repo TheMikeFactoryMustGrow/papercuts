@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: CLI copies are byte-identical
+        run: |
+          cmp scripts/papercut skills/papercuts/scripts/papercut
+          cmp scripts/papercut skills/papercuts-kaizen/scripts/papercut
+
+      - name: CLI compiles (Python stdlib only)
+        run: python3 -m py_compile scripts/papercut
+
+      - name: Smoke test (enable → log → list → resolve → status)
+        run: |
+          chmod +x scripts/papercut
+          PAPERCUT="$PWD/scripts/papercut"
+          tmp="$(mktemp -d)"
+          cd "$tmp" && git init -q
+          git config user.email ci@example.com && git config user.name CI
+          "$PAPERCUT" enable
+          "$PAPERCUT" status | tee status.out
+          grep -q 'project_enabled=true' status.out
+          "$PAPERCUT" -m ci "Smoke: enable path works."
+          "$PAPERCUT" list | grep -q 'Smoke: enable path works.'
+          "$PAPERCUT" resolve --contains "Smoke" -n "Smoke resolved."
+          "$PAPERCUT" history | grep -q 'Smoke'
