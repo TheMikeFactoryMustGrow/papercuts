@@ -10,7 +10,8 @@ A platform-agnostic way for coding agents to:
 
 1. **Log** tiny non-blocking friction to a per-repo `.agent-papercuts/open.md` (+ history ledger)  
 2. **Sand** open items later (cluster-first light-causal — **not** formal RCA per item) via **papercuts**  
-3. **Kaizen** on the shadow ledger quarterly via **papercuts-kaizen** (patterns / optional deep RCA)
+3. **Kaizen** on the shadow ledger quarterly via **papercuts-kaizen** (patterns / optional deep RCA)  
+4. **Adopt** into new repos + register them in `fleet.yaml` via **papercuts-adopt**
 ## Do this when a human shares this repo
 
 ### A) Machine install (once)
@@ -23,7 +24,7 @@ command -v papercut || export PATH="$HOME/.local/bin:$PATH"
 
 Installs:
 
-- Skills → `papercuts` **and** `papercuts-kaizen` under `~/.claude/skills` and `~/.grok/skills`  
+- Skills → `papercuts`, `papercuts-kaizen` **and** `papercuts-adopt` under `~/.claude/skills` and `~/.grok/skills`  
 - CLI → `~/.local/bin/papercut`
 ### B) Enable in a *consumer* project (once per project)
 
