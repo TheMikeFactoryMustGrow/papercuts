@@ -54,4 +54,11 @@ When a row is done, tick it and date the commit that cleaned the briefs.
 
 **Mechanism:** a stdlib `papercut fleet-status` subcommand (or standalone script) sweeping a repo list, JSON out; run as a scheduled routine that pings Mike only on threshold breach. Baseline row per repo on first run.
 
+**Refinements (Mike-ratified 2026-08-23, second pass):**
+
+- **Registry via adopt** — the repo list is `fleet.yaml` in this repo, appended only by the `papercuts-adopt` skill in the same pass that verifies enablement. fleet-status reads it, never edits it; the list never drifts from reality.
+- **Health-signal definitions** — a healthy repo *oscillates* (captures keep arriving, sanding keeps draining). A declining open count and a low open/resolved ratio are NOT the health signals. The pathological states are the flat lines: **zero captures despite git activity** (silent repo) and **captures with no resolutions** (logging into a void). Primary metrics: capture rate per unit of git activity, and sanding latency; open/resolved ratio is the secondary trend. A repo with 0 logged in 90 active days is worse than one with 8 open.
+- **Append-only snapshots** — each sweep lands as a PR to this repo appending `fleet-status/<date>.json` (or one JSONL), never overwriting a status file; kaizen gets trend history for free and every sweep is reviewable. Threshold alerts (silent repo, latency > N days) go in the sweep PR's body.
+- **Skill family (ratified)** — adopt / sand (papercuts) / kaizen, all in this repo, with fleet-status as the shared data layer. Cheapest-model routine runs the sweep script and files the snapshot PR; judgment stays in the skills.
+
 **Next step:** design the thresholds/owner via dmaic-analyze, then build the subcommand (one PR) + the routine (one PR).

@@ -1,0 +1,41 @@
+# Papercuts fleet registry — the deployed-repo list fleet-status sweeps.
+#
+# Rows accumulate ONLY through papercuts-adopt (Mode 2 step 4): a row means
+# enablement was verified in that repo in the session that added it.
+# fleet-status reads this file; it never edits it.
+#
+# Seeded 2026-08-23 from docs/FLEET-REVIEW-TODO.md (repos enabled 2026-07-10).
+# `verified` = last session that confirmed real capture data, not just enable.
+
+repos:
+  - name: Linglepedia
+    enabled: 2026-07-10
+    verified: 2026-08-23   # 17 logged / 12 resolved
+  - name: beancount
+    enabled: 2026-07-10
+  - name: Bean-Counter-Knowledge
+    enabled: 2026-07-10
+  - name: bean-counter
+    enabled: 2026-07-10
+  - name: gix-equity-comp-tool
+    enabled: 2026-07-10
+  - name: finance-dashboard
+    enabled: 2026-07-10
+  - name: gix-pipeline
+    enabled: 2026-07-10
+  - name: imessage-search
+    enabled: 2026-07-10
+  - name: process-design-plugin
+    enabled: 2026-07-10
+    verified: 2026-08-23   # enabled, 0 events
+  - name: google-workspace-mcp-config
+    enabled: 2026-07-10
+  - name: partnerships-pipeline-agent
+    enabled: 2026-07-10
+  - name: karpathy-autoresearch
+    enabled: 2026-07-10
+  - name: wbr-app
+    enabled: 2026-07-10
+  - name: papercuts
+    enabled: 2026-07-10
+    verified: 2026-08-23   # enabled, 0 events

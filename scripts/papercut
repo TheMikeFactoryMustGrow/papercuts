@@ -679,9 +679,10 @@ def cmd_install(args: argparse.Namespace) -> int:
         main = root / "SKILL.md"
     if main.exists():
         skills_to_install.append(("papercuts", main))
-    kaizen = root / "skills" / "papercuts-kaizen" / "SKILL.md"
-    if kaizen.exists():
-        skills_to_install.append(("papercuts-kaizen", kaizen))
+    for extra in ("papercuts-kaizen", "papercuts-adopt"):
+        skill_md = root / "skills" / extra / "SKILL.md"
+        if skill_md.exists():
+            skills_to_install.append((extra, skill_md))
 
     if not skills_to_install:
         print("error: no SKILL.md found to install", file=sys.stderr)
@@ -887,7 +888,7 @@ def cmd_status(args: argparse.Namespace) -> int:
     cli = shutil.which("agent-papercut") or shutil.which("papercut")
     skill_hits = []
     home = Path.home()
-    for skill_name in ("papercuts", "papercuts-kaizen"):
+    for skill_name in ("papercuts", "papercuts-kaizen", "papercuts-adopt"):
         for base in (
             home / ".claude" / "skills",
             home / ".grok" / "skills",
