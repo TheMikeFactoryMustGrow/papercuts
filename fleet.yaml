@@ -55,6 +55,11 @@ repos:
     # fleet-rollout batch 1: enablement verified in-session (papercut status
     # project_enabled=true; smoke papercut logged+resolved). Adoption PR:
     # gym-plan-analyzer#1.
+  - name: guesty-owners-connect
+    enabled: 2026-08-23
+    # fleet-rollout batch 1: enablement verified in-session (papercut status
+    # project_enabled=true; smoke + gitignore papercuts logged+resolved).
+    # Adoption PR: guesty-owners-connect#1.
   - name: claude-scheduled-tasks
     enabled: 2026-08-23
     # fleet-rollout M4: enablement verified in-session (papercut status
