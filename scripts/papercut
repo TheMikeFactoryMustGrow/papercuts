@@ -74,6 +74,10 @@ Data lives under **`.agent-papercuts/`** (open list + history), not a root
 `PAPERCUTS.md`, so it does not collide with product files. Do this
 **proactively, in the moment**.
 
+Entries are repo files: **commit them, and they ride the session's PR** —
+include `.agent-papercuts/` changes in the branch you push. An entry logged in
+an ephemeral container but never pushed is lost with the container.
+
 Sand: skill **papercuts** ("fix the papercuts"). Clear with `papercut resolve`
 (not hand-delete). Long cycle: **papercuts-kaizen**.
 
