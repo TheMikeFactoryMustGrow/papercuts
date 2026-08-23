@@ -41,3 +41,28 @@ jobs:
           "$PAPERCUT" list | grep -q 'empty log'
           grep -q '"event": "logged"'   .agent-papercuts/history.jsonl
           grep -q '"event": "resolved"' .agent-papercuts/history.jsonl
+
+      - name: Regression — stamp-collided entries resolve individually
+        run: |
+          PAPERCUT="$PWD/scripts/papercut"
+          tmp="$(mktemp -d)"; cd "$tmp" && git init -q
+          "$PAPERCUT" enable
+          printf '%s\n' '' '2026-08-06T03:27:18.616Z - m1 - a1' '' 'First: the SIGPIPE guard bug.' '' '2026-08-06T03:27:18.616Z - m1 - a1' '' 'Second: autostash note, same stamp.' '' >> .agent-papercuts/open.md
+          "$PAPERCUT" resolve --contains sigpipe -n "guard fixed"
+          "$PAPERCUT" list | grep -q 'Second: autostash note'
+          "$PAPERCUT" list | grep -q '(1 total'
+          # --index across stamp-siblings resolves BOTH (dedup keys on entry, not stamp)
+          tmp2="$(mktemp -d)"; cd "$tmp2" && git init -q
+          "$PAPERCUT" enable
+          printf '%s\n' '' '2026-08-06T03:27:18.616Z - m1 - a1' '' 'First: the SIGPIPE guard bug.' '' '2026-08-06T03:27:18.616Z - m1 - a1' '' 'Second: autostash note, same stamp.' '' >> .agent-papercuts/open.md
+          "$PAPERCUT" resolve --index 1 --index 2 -n "both fixed"
+          "$PAPERCUT" list | grep -q 'empty log'
+
+      - name: Regression — spaced model/author normalize to single tokens
+        run: |
+          PAPERCUT="$PWD/scripts/papercut"
+          tmp="$(mktemp -d)"; cd "$tmp" && git init -q
+          "$PAPERCUT" enable
+          PAPERCUT_AUTHOR='Jane Doe' "$PAPERCUT" -m 'claude opus' "spaced header fields"
+          grep -q ' - claude-opus - Jane-Doe$' .agent-papercuts/open.md
+          "$PAPERCUT" list | grep -q '(1 total'
