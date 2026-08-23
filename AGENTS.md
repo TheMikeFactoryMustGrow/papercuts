@@ -12,6 +12,23 @@ A platform-agnostic way for coding agents to:
 2. **Sand** open items later (cluster-first light-causal — **not** formal RCA per item) via **papercuts**  
 3. **Kaizen** on the shadow ledger quarterly via **papercuts-kaizen** (patterns / optional deep RCA)  
 4. **Adopt** into new repos + register them in `fleet.yaml` via **papercuts-adopt**
+
+## Package map (agent index — update in the same PR as any addition)
+
+| Artifact | What it is |
+|----------|------------|
+| `scripts/papercut` | The CLI (Python stdlib, single file) — log/resolve/history/enable/install |
+| `skills/papercuts/` | Sand skill (day-to-day fix pass); root `SKILL.md` is a byte-identical copy (CI-guarded) |
+| `skills/papercuts-kaizen/` | Long-cycle ledger pattern review |
+| `skills/papercuts-adopt/` | Roll out to a repo + register it in the fleet |
+| `fleet.yaml` | Deployed-repo registry — rows only via papercuts-adopt (R-FLEET-01) |
+| `REQUIREMENTS.md` | Hard-rule register (the ledger) — CI-linted (R-REG-01) |
+| `templates/` | AGENTS snippet (CI parity vs inline constant), home pointer, open-log header, new-repo checklist |
+| `docs/` | DESIGN, HOME-VS-REPO, COLLISIONS, FLOW, FLEET-REVIEW-TODO (+ liveness-eval design) |
+
+Adding a skill, registry, or doc **updates this map and the README layout in
+the same PR** — a stale index caused the 2026-08-23 duplicate-skill near-miss.
+
 ## Do this when a human shares this repo
 
 ### A) Machine install (once)
@@ -108,6 +125,22 @@ Data lives under **`.agent-papercuts/`** (open list + history), not a root
 `PAPERCUTS.md`, so it does not collide with product files. Do this
 **proactively, in the moment**.
 
+Entries are repo files: **commit them, and they ride the session's PR** —
+include `.agent-papercuts/` changes in the branch you push. An entry logged in
+an ephemeral container but never pushed is lost with the container.
+
 Sand: skill **papercuts** ("fix the papercuts"). Clear with `papercut resolve`
 (not hand-delete). Long cycle: **papercuts-kaizen**.
+
+No `papercut` on PATH? One-time machine install (CLI → `~/.local/bin`):
+`git clone https://github.com/TheMikeFactoryMustGrow/papercuts && papercuts/scripts/papercut install`
+
+Cannot install (restricted machine, cloud container)? The format is the tool — append by hand:
+if `.agent-papercuts/open.md` does not exist, start it with the ownership marker line
+`<!-- agent-papercuts:v1 -->` (without it the CLI treats the file as foreign and refuses it later);
+then append `<UTC ISO-8601 stamp> - <model> - <author>`, a blank line, a one-paragraph body
+(`<model>` and `<author>` are single tokens, no spaces — `jane-doe`, not `Jane Doe`).
+`.agent-papercuts/history.jsonl` gets ONE physical line per entry —
+`{"event": "logged", "entry_stamp": "<stamp>", "model": "…", "author": "…", "body": "…", "ts": "<stamp>", "repo_root": "<abs git root>"}`
+— string values JSON-escaped (quotes, backslashes, newlines), or the line silently drops from history views.
 <!-- agent-papercuts:end -->
