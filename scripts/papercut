@@ -338,13 +338,20 @@ def split_header_and_body(text: str) -> tuple[str, str]:
     return text[: m.start()], text[m.start() :]
 
 
-def rewrite_log_without(path: Path, remove_stamps: set[str]) -> list[dict]:
+def entry_key(e: dict) -> tuple:
+    """Identity of one open entry. Stamps can collide (batch loggers reuse one
+    timestamp), so removal must key on the full entry, never the stamp alone —
+    a stamp-keyed remove deletes unselected stamp-siblings."""
+    return (e["stamp"], e["model"], e["author"], e["body"])
+
+
+def rewrite_log_without(path: Path, remove_keys: set[tuple]) -> list[dict]:
     text = path.read_text(encoding="utf-8") if path.exists() else HEADER
     if path.exists() and not is_owned_open_file(path):
         raise SystemExit(f"error: refusing to modify foreign file {path}")
     entries = parse_entries(text)
-    removed = [e for e in entries if e["stamp"] in remove_stamps]
-    keep = [e for e in entries if e["stamp"] not in remove_stamps]
+    removed = [e for e in entries if entry_key(e) in remove_keys]
+    keep = [e for e in entries if entry_key(e) not in remove_keys]
     header, _ = split_header_and_body(text)
     if not header.strip():
         header = HEADER
@@ -525,7 +532,7 @@ def cmd_resolve(args: argparse.Namespace) -> int:
         )
         return 2
 
-    remove = {e["stamp"] for e in selected}
+    remove = {entry_key(e) for e in selected}
     removed = rewrite_log_without(path, remove)
     for e in removed:
         append_history(
