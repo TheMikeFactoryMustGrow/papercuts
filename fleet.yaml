@@ -42,3 +42,8 @@ repos:
   - name: papercuts
     enabled: 2026-07-10
     verified: 2026-08-23   # enabled, 0 events
+  - name: guesty-owners-connect
+    enabled: 2026-08-23
+    # fleet-rollout batch 1: enablement verified in-session (papercut status
+    # project_enabled=true; smoke + gitignore papercuts logged+resolved).
+    # Adoption PR: guesty-owners-connect#1.
