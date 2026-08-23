@@ -121,3 +121,9 @@ repos:
     # (papercut status project_enabled=true; smoke papercut logged+resolved).
     # Adoption PR: bsm-financial-model#1. pr-template SKIP proposed (two-file
     # static page, no rules to register) — Mike confirms at merge.
+  - name: gix-sales-process
+    enabled: 2026-08-23
+    # fleet-rollout M4 (dormant sweep): enablement verified in-session
+    # (papercut status project_enabled=true; smoke papercut logged+resolved).
+    # Adoption PR: gix-sales-process#1. pr-template SKIP proposed (single
+    # static HTML flowchart) — Mike confirms at merge.
