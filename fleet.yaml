@@ -110,3 +110,8 @@ repos:
     # fleet-rollout M4: enablement verified in-session (papercut status
     # project_enabled=true; smoke papercut logged+resolved). Adoption PR:
     # controller-console#1.
+  - name: repo-audit
+    enabled: 2026-08-23
+    # fleet-rollout M4 (dormant sweep): enablement verified in-session
+    # (papercut status project_enabled=true; smoke papercut logged+resolved).
+    # Adoption PR: repo-audit#1.
