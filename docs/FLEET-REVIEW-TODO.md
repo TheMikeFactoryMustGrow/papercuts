@@ -38,3 +38,20 @@ For each enabled project, when next in that tree:
 - [ ] CLAUDE.md nowhere duplicates a full second policy without pointing at AGENTS  
 
 When a row is done, tick it and date the commit that cleaned the briefs.
+
+## Capture-liveness eval (Mike, 2026-08-23) — DESIGNED, NOT BUILT
+
+**Problem:** enabled ≠ working. As of 2026-08-23, ~12 repos are enabled but only Linglepedia shows real capture (17 logged / 12 resolved); the rest are silent, and silence is ambiguous — frictionless work or broken capture (snippet ignored, CLI missing in that environment, hand-append drift). Nothing measures it. This is the dmaic-control regression guard for the *capture process itself*, distinct from the CI suite (which guards the tool's code).
+
+**Metrics (all derivable from existing per-repo `.agent-papercuts/history.jsonl` + git activity — no new instrumentation):**
+
+| Metric | Calculation | Red flag |
+|---|---|---|
+| Capture rate | `logged` events per repo per week | 0 while the repo had commits that week |
+| Silent-repo detection | enabled + 0 logs in N days AND git commits in the window | capture failing → investigate that repo's snippet/PATH |
+| Sanding latency | age of oldest entry in `open.md` | > ~30d — logs nobody sands kill the habit |
+| Loop closure | `resolved`/`logged` ratio, trailing | falling trend |
+
+**Mechanism:** a stdlib `papercut fleet-status` subcommand (or standalone script) sweeping a repo list, JSON out; run as a scheduled routine that pings Mike only on threshold breach. Baseline row per repo on first run.
+
+**Next step:** design the thresholds/owner via dmaic-analyze, then build the subcommand (one PR) + the routine (one PR).
