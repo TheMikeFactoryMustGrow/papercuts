@@ -80,8 +80,11 @@ will never sweep it).
 4. **Register the repo**: append a row to `fleet.yaml` in the papercuts
    package repo (name, enabled date) — its own small PR there. The registry
    accumulates only through adopt; fleet-status reads it, never edits it.
-5. Optional pairing: if the repo lacks why-first PR machinery, offer
-   `/pr-template` Mode 2 in the same rollout pass (separate PR).
+5. **Standard rollout recipe (Mike-ratified 2026-08-23, PC-RECIPE):** a
+   fleet rollout pass runs this skill's Mode 2 AND `/pr-template` Mode 2 in
+   the same pass, as separate PRs. Exception: a knowledge vault gets
+   papercuts only — pr-template's own scope guard applies (flag, don't
+   "fix", a vault).
 
 Done when: status green in the target repo, machinery merged (or PR open and
 ready), and the `fleet.yaml` row merged (or PR open and ready). Anything
