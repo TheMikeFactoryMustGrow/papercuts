@@ -42,3 +42,8 @@ repos:
   - name: papercuts
     enabled: 2026-07-10
     verified: 2026-08-23   # enabled, 0 events
+  - name: decision-review-plugin
+    enabled: 2026-08-23
+    # fleet-rollout M4: repo was enabled earlier but never registered; snippet
+    # refreshed + loop proven in-session (papercut logged+resolved). Adoption
+    # PR: decision-review-plugin#15.
