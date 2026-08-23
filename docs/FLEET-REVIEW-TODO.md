@@ -77,7 +77,7 @@ Causal chain — every output traces to a lever:
 | capture_rate | ≥1 logged in any 30d window with commits | 0 logged in 30d WITH commits | 0 logged in 60d WITH commits | Open that repo's AGENTS.md: snippet stale/missing → queue adopt Mode 1; snippet current but CLI absent/unverified in that repo's environments → escalate as infra gap (env setup line); snippet current AND CLI confirmed → escalate as "instruction ignored". Document in the sweep PR body. |
 | silent_repo | — (derived flag) | = yellow capture_rate | = red capture_rate | Same playbook — silent_repo IS red capture_rate's detector; one investigation, not two. |
 | sanding_latency | oldest open <30d | 30–60d | >60d | Sweep PR body lists repo + oldest entry; Mike decides sand-now vs batch (next sanding session, not an SLA). |
-| loop_closure | trailing resolved/logged ≥0.5 | 0.3–0.5 | <0.3 with >5 open | Check for hand-deleted entries first (history vs open.md mismatch = discipline failure), then treat as latency. |
+| loop_closure | trailing resolved/logged ≥0.5 | 0.3–0.5, or <0.3 with ≤5 open (low volume — same bound as red) | <0.3 with >5 open | Check for hand-deleted entries first (history vs open.md mismatch = discipline failure), then treat as latency. |
 
 Known failure modes (all observed or near-missed 2026-08): snippet stale after a CLI update; CLI absent in a cloud container; entries logged but never pushed; hand-deleted entries starving history; genuine frictionless dormancy (the false positive git_activity bounds against). First sweep writes baseline rows and alerts on nothing; yellow queues a re-check next sweep, never a ping.
 
