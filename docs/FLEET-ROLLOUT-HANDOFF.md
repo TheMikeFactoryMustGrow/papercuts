@@ -81,3 +81,16 @@ is read-only). The pr-template Mode 2 bar still applies where that half runs.
 Chartered in the papercuts-CI session (session_01Rqzr7FBLS3PsgprA1b9sgK),
 decision round 2026-08-23: PC-RECIPE + PC-TIMING approved. Sibling charter:
 process-design-plugin `docs/HARDEN-V1-HANDOFF.md` (independent session).
+
+## Decision log (appended by the rollout session)
+
+- **2026-08-23 M1 round (Linglepedia PR #341, decision-review artifact;
+  recorded in Linglepedia `_claude_config/loop-queue/decision-log.yaml`):**
+  M1-TABLE, M1-LINGLEKG, M1-DORMANT, **M1-FLEETYAML** — all APPROVED by Mike.
+  M1-FLEETYAML authorizes correcting the three fleet.yaml rows with no
+  matching live repo (rename karpathy-autoresearch → autoresearch; annotate
+  gix-pipeline and wbr-app as local-only) via one registry PR. This is a
+  Mike-approved correction of registry drift, not an adopt-pass bypass:
+  R-FLEET-01 governs how rows are added; these rows' enablement history is
+  preserved, and the autoresearch GitHub-copy enablement was done properly
+  via adopt (autoresearch#1) in the same session.
