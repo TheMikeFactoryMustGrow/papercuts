@@ -80,6 +80,8 @@ ambient-log block into home. See `docs/HOME-VS-REPO.md`.
 - Keep consumer surface **tiny** (snippet + `.agent-papercuts/`).  
 - Skill stays the home of fix protocol depth.  
 - See `docs/DESIGN.md` before adding steps (bias to delete).
+- Hard rules live in `REQUIREMENTS.md` (id + author + why); cite IDs, update the register in the same change.
+- PRs use the why-first template (`.github/PULL_REQUEST_TEMPLATE.md`). **Draft = still working; ready-for-review = the done-signal** — the authoring session flips its own PR ready the moment the Accept-if checks pass (CI green), never leaves the flip to a human (R-PR-01).
 
 ## Quick smoke test after install
 
