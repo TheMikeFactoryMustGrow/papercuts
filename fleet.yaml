@@ -42,3 +42,8 @@ repos:
   - name: papercuts
     enabled: 2026-07-10
     verified: 2026-08-23   # enabled, 0 events
+  - name: linglepedia-create-note
+    enabled: 2026-08-23
+    # fleet-rollout M4: enablement verified in-session (papercut status
+    # project_enabled=true; smoke papercut logged+resolved). Adoption PR:
+    # linglepedia-create-note#10.
