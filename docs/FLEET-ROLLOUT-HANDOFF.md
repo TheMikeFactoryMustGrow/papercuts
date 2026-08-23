@@ -41,12 +41,21 @@ scope guard applies (flag, don't "fix", a vault).
 
 ## Per-repo test (Done-when, from the adopt skill + pr-template)
 
+Full Mode 2 adoptions:
+
 - `papercut status` → `project_enabled=true`; snippet matches current template.
 - One smoke papercut logged AND resolved in the repo (proves the loop, not just
   the files); entries ride the session's PR.
-- fleet.yaml row merged in this repo.
+- fleet.yaml row merged in the papercuts package repo (the registry is
+  centralized there — two repos, two PRs, per the adopt skill).
 - Code repos: pr-template Mode 2 bar — gap table closed, register lint green on
   real ledger AND red on a seeded defect, adoption PR body uses the template.
+
+Mode-1-check repos (already enabled — imessage-search, beancount in batch 1,
+and any already-enabled repo in the full sweep) use a reduced Done-when:
+snippet currency confirmed (`papercut status` + template compare) and the
+fleet.yaml row's existence verified — no new row, no smoke-papercut PR (Mode 1
+is read-only). The pr-template Mode 2 bar still applies where that half runs.
 
 ## Constraints the session must know
 
