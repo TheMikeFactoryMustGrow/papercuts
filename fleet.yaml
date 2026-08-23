@@ -90,3 +90,9 @@ repos:
     # fleet-rollout M4: enablement verified in-session (papercut status
     # project_enabled=true; smoke papercut logged+resolved). Adoption PR:
     # claude-scheduled-tasks#12.
+  - name: gix-sales-process
+    enabled: 2026-08-23
+    # fleet-rollout M4 (dormant sweep): enablement verified in-session
+    # (papercut status project_enabled=true; smoke papercut logged+resolved).
+    # Adoption PR: gix-sales-process#1. pr-template SKIP proposed (single
+    # static HTML flowchart) — Mike confirms at merge.
