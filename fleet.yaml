@@ -90,3 +90,8 @@ repos:
     # fleet-rollout M4: enablement verified in-session (papercut status
     # project_enabled=true; smoke papercut logged+resolved). Adoption PR:
     # claude-scheduled-tasks#12.
+  - name: gix-investor-deck
+    enabled: 2026-08-23
+    # fleet-rollout M4: enablement verified in-session (papercut status
+    # project_enabled=true; smoke papercut logged+resolved). Adoption PR:
+    # gix-investor-deck#21.
