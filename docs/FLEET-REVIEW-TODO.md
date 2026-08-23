@@ -61,4 +61,24 @@ When a row is done, tick it and date the commit that cleaned the briefs.
 - **Append-only snapshots** — each sweep lands as a PR to this repo appending `fleet-status/<date>.json` (or one JSONL), never overwriting a status file; kaizen gets trend history for free and every sweep is reviewable. Threshold alerts (silent repo, latency > N days) go in the sweep PR's body.
 - **Skill family (ratified)** — adopt / sand (papercuts) / kaizen, all in this repo, with fleet-status as the shared data layer. Cheapest-model routine runs the sweep script and files the snapshot PR; judgment stays in the skills.
 
-**Next step:** design the thresholds/owner via dmaic-analyze, then build the subcommand (one PR) + the routine (one PR).
+**Thresholds + playbooks (Mike-ratified 2026-08-23, dmaic-analyze pass):**
+
+Causal chain — every output traces to a lever:
+
+| Output metric | Controllable inputs | External inputs (bounds) |
+|---|---|---|
+| capture_rate | snippet_current, cli_available (env setup line), entries-ride-the-PR rule | git_activity (no work → no captures, legitimately) |
+| silent_repo | snippet_current, cli_available | git_activity (an idle repo is dormant, not silent) |
+| sanding_latency | sanding_session_cadence (/papercuts runs) | Mike's available time |
+| loop_closure | sanding_session_cadence, resolve-via-CLI discipline | capture volume |
+
+| Metric | Green | Yellow | Red | First action on red (owner: the sweep session; escalation: Mike) |
+|---|---|---|---|---|
+| capture_rate | ≥1 logged in any 30d window with commits | 0 logged in 30d WITH commits | 0 logged in 60d WITH commits | Open that repo's AGENTS.md: snippet present + current? Yes → escalate as "instruction ignored"; stale/missing → queue adopt Mode 1. Document in the sweep PR body. |
+| silent_repo | — (derived flag) | = yellow capture_rate | = red capture_rate | Same playbook — silent_repo IS red capture_rate's detector; one investigation, not two. |
+| sanding_latency | oldest open <30d | 30–60d | >60d | Sweep PR body lists repo + oldest entry; Mike decides sand-now vs batch (next sanding session, not an SLA). |
+| loop_closure | trailing resolved/logged ≥0.5 | 0.3–0.5 | <0.3 with >5 open | Check for hand-deleted entries first (history vs open.md mismatch = discipline failure), then treat as latency. |
+
+Known failure modes (all observed or near-missed 2026-08): snippet stale after a CLI update; CLI absent in a cloud container; entries logged but never pushed; hand-deleted entries starving history; genuine frictionless dormancy (the false positive git_activity bounds against). First sweep writes baseline rows and alerts on nothing; yellow queues a re-check next sweep, never a ping.
+
+**Next step (thresholds now ratified):** build the `fleet-status` subcommand (one PR) + the sweep routine (one PR) — chartered for a fresh session.
