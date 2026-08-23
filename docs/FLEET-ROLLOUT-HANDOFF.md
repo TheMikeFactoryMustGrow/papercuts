@@ -24,7 +24,11 @@ scope guard applies (flag, don't "fix", a vault).
    archive-skip. Output: one table, ratified by Mike before any adoption.
 2. **Batch 1 (validate the recipe): gym-plan-analyzer, imessage-search,
    beancount, guesty-owners-connect.** One repo at a time; after each, run the
-   per-repo test (below) before starting the next.
+   per-repo test (below) before starting the next. Note: imessage-search and
+   beancount are already papercuts-enabled (fleet.yaml, 2026-07-10) — for
+   those two, batch 1 means **pr-template Mode 2 + adopt Mode 1 check**
+   (snippet currency, registry row), per the milestone-4 rule; only
+   gym-plan-analyzer and guesty-owners-connect get the full Mode 2 adoption.
 3. **Recipe retro** — after batch 1: did any adoption need a contract change to
    either tool? Contract changes reset the leg-1 clock and go back to the owning
    repo as their own PRs; content fixes are fine.
