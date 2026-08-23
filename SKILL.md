@@ -53,6 +53,16 @@ If the project was not enabled and the user accepted enable: snippet + log exist
 
 Inspired by [Steve Ruiz](https://x.com/steveruizok/status/2075303919664734295).
 
+## Inputs & access
+
+- Shell execution; the `papercut` CLI on PATH or this skill's bundled script
+  (`<skills-dir>/papercuts/scripts/papercut`).
+- Write access to the working repo — the surfaces a sand pass touches
+  (docs, AGENTS.md, scripts, config) plus `.agent-papercuts/` via the CLI.
+  On pr-only repos, fixes land as a PR, never a direct push.
+- A discoverable git root (the CLI walks up to `.git`); logging alone
+  needs only the repo and the CLI.
+
 ---
 
 ## Bootstrap gate (run first on every skill invoke)

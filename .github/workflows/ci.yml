@@ -34,6 +34,36 @@ jobs:
           print(f"register OK: {len(ids)} rules, IDs unique")
           EOF
 
+      - name: Skill lint (six-element rubric) + root SKILL.md parity
+        run: |
+          cmp SKILL.md skills/papercuts/SKILL.md
+          python3 - <<'EOF'
+          import re, sys
+          from pathlib import Path
+          # Each SKILL.md must carry the six contract elements (R-SKILL-01).
+          # Keyword heuristic like plugin-ci's skill-lint: a red usually means a
+          # real gap; occasionally the cue list needs a tune instead.
+          CUES = {
+              "when-to-use":       r"Use when|## When to run|Trigger",
+              "inputs-and-access": r"## Inputs & access",
+              "sequence":          r"## Mode \d|## Path [A-Z]|## Procedure",
+              "validation":        r"Success \(done when\)|Done when|Validation first",
+              "return":            r"## Return|report\b.*deliver|Deliver:|report",
+              "approval-gates":    r"ask(s)? (the user|first|before)|proposal(s)? only|Ask before|\*\*Stop and ask",
+          }
+          fail = 0
+          for f in sorted(Path("skills").glob("*/SKILL.md")):
+              text = f.read_text(encoding="utf-8")
+              missing = [k for k, pat in CUES.items()
+                         if not re.search(pat, text, re.IGNORECASE)]
+              if missing:
+                  print(f"FAIL {f}: missing {missing}")
+                  fail = 1
+              else:
+                  print(f"OK   {f}")
+          sys.exit(fail)
+          EOF
+
       - name: Snippet parity (template path + inline-constant fallback)
         run: |
           extract() { awk '/<!-- agent-papercuts:begin -->/{f=1} f{print} /<!-- agent-papercuts:end -->/{f=0}' "$1"; }
