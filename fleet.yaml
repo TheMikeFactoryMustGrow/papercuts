@@ -65,6 +65,11 @@ repos:
     # fleet-rollout M4: repo was enabled earlier but never registered; snippet
     # refreshed + loop proven in-session (papercut logged+resolved). Adoption
     # PR: decision-review-plugin#15.
+  - name: linglepedia-create-note
+    enabled: 2026-08-23
+    # fleet-rollout M4: enablement verified in-session (papercut status
+    # project_enabled=true; smoke papercut logged+resolved). Adoption PR:
+    # linglepedia-create-note#10.
   - name: belief-plugin
     enabled: 2026-08-23
     # fleet-rollout M4: enablement verified in-session (papercut status
