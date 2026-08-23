@@ -9,6 +9,8 @@
 
 -
 
+**Supersedes / relates to:** <!-- PR #s, RCAs, rulings that led here — "none" if standalone -->
+
 ## Problem / opportunity
 
 <!-- What was wrong, missing, or costly *before* this PR? Who felt it? -->
@@ -42,7 +44,15 @@
 
 -
 
+## Requirements touched
+
+<!-- REQUIREMENTS.md IDs this PR affects, adds, or relies on — "none" if none. Hard-rule changes update the register in the same PR. -->
+
+-
+
 ## How to evaluate this update
+
+<!-- Each Accept-if box states a check a stranger could re-run (a command, a file to open, an assertion) — never a bare claim like "works correctly". -->
 
 **Accept if:**
 
@@ -70,12 +80,6 @@
 
 **Blast radius (one line):**
 
-
-## Version
-
-<!-- No version home yet; this repo ships from main. Tick the first box unless that changes. -->
-
-- [ ] No versioned content → **no bump**
 
 ## Risk & rollback
 

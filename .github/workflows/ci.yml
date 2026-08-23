@@ -14,6 +14,26 @@ jobs:
       - name: Syntax
         run: python3 -m py_compile scripts/papercut
 
+      - name: REQUIREMENTS register lint (well-formed rows, unique IDs, fitness metric)
+        run: |
+          python3 - <<'EOF'
+          import re, sys
+          from pathlib import Path
+          t = Path("REQUIREMENTS.md").read_text(encoding="utf-8")
+          assert "**Fitness metric:**" in t, "register missing fitness metric line"
+          rows = [l for l in t.splitlines() if re.match(r"^\|\s*R-[A-Z]+-\d+\s*\|", l)]
+          assert rows, "register has no rule rows (| R-XXX-NN | ...)"
+          ids = []
+          for l in rows:
+              # split on unescaped pipes only — GFM allows a literal pipe in a cell as \|
+              cells = [c.strip().replace("\\|", "|") for c in re.split(r"(?<!\\)\|", l.strip().strip("|"))]
+              assert len(cells) == 5 and all(cells), f"row needs 5 non-empty cells (id/requirement/author/why/enforcement): {l}"
+              ids.append(cells[0])
+          dupes = {i for i in ids if ids.count(i) > 1}
+          assert not dupes, f"duplicate rule IDs: {sorted(dupes)}"
+          print(f"register OK: {len(ids)} rules, IDs unique")
+          EOF
+
       - name: Snippet parity (template path + inline-constant fallback)
         run: |
           extract() { awk '/<!-- agent-papercuts:begin -->/{f=1} f{print} /<!-- agent-papercuts:end -->/{f=0}' "$1"; }
