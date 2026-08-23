@@ -25,7 +25,8 @@ jobs:
           assert rows, "register has no rule rows (| R-XXX-NN | ...)"
           ids = []
           for l in rows:
-              cells = [c.strip() for c in l.strip().strip("|").split("|")]
+              # split on unescaped pipes only — GFM allows a literal pipe in a cell as \|
+              cells = [c.strip().replace("\\|", "|") for c in re.split(r"(?<!\\)\|", l.strip().strip("|"))]
               assert len(cells) == 5 and all(cells), f"row needs 5 non-empty cells (id/requirement/author/why/enforcement): {l}"
               ids.append(cells[0])
           dupes = {i for i in ids if ids.count(i) > 1}
