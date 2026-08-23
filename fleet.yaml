@@ -26,6 +26,8 @@ repos:
     enabled: 2026-07-10
   - name: gix-pipeline
     enabled: 2026-07-10
+    # 2026-08-23 fleet-rollout M1 (M1-FLEETYAML approved): local repo (~/code/gix-pipeline,
+    # per docs/FLEET-REVIEW-TODO.md) — no GitHub remote in the account; verify on-Mac only.
   - name: imessage-search
     enabled: 2026-07-10
   - name: process-design-plugin
@@ -35,10 +37,14 @@ repos:
     enabled: 2026-07-10
   - name: partnerships-pipeline-agent
     enabled: 2026-07-10
-  - name: karpathy-autoresearch
+  - name: autoresearch
+    # renamed from karpathy-autoresearch 2026-08-23 (fleet-rollout M1, M1-FLEETYAML approved):
+    # the GitHub repo is TheMikeFactoryMustGrow/autoresearch; no repo of the old name exists.
     enabled: 2026-07-10
   - name: wbr-app
     enabled: 2026-07-10
+    # 2026-08-23 fleet-rollout M1 (M1-FLEETYAML approved): local repo (~/code/wbr-app,
+    # per docs/FLEET-REVIEW-TODO.md) — no GitHub remote in the account; verify on-Mac only.
   - name: papercuts
     enabled: 2026-07-10
     verified: 2026-08-23   # enabled, 0 events
