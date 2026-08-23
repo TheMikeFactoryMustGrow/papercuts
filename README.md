@@ -41,6 +41,7 @@ papercuts is per-repo — see [`docs/HOME-VS-REPO.md`](./docs/HOME-VS-REPO.md) a
 | **Agents opening this package** | [`AGENTS.md`](./AGENTS.md) |
 | **Day-to-day sand** | skill [`SKILL.md`](./SKILL.md) / `skills/papercuts/` |
 | **Long-cycle patterns** | skill [`skills/papercuts-kaizen/SKILL.md`](./skills/papercuts-kaizen/SKILL.md) |
+| **Roll out to a repo + fleet registry** | skill [`skills/papercuts-adopt/SKILL.md`](./skills/papercuts-adopt/SKILL.md) |
 
 ---
 
@@ -67,7 +68,7 @@ Agents should **not** reinvent the sand skill in every project. They need:
 
 | Layer | What | Command |
 |-------|------|---------|
-| **Machine** | Skills + CLI | `papercut install` (papercuts **and** papercuts-kaizen) |
+| **Machine** | Skills + CLI | `papercut install` (papercuts, papercuts-kaizen **and** papercuts-adopt) |
 | **Project** | AGENTS snippet + open log + history ledger | `papercut enable` |
 ---
 
@@ -260,15 +261,17 @@ papercuts/
   README.md
   AGENTS.md
   SKILL.md                      # day-to-day sand skill (also skills/papercuts/)
+  REQUIREMENTS.md               # hard-rule register (the ledger)
+  fleet.yaml                    # deployed-repo registry (rows via papercuts-adopt only)
   skills/
     papercuts/SKILL.md
     papercuts-kaizen/SKILL.md   # long-cycle pattern review
+    papercuts-adopt/SKILL.md    # roll out to a repo + register in the fleet
   scripts/papercut              # CLI: log, resolve, history, enable, install
-  templates/
   docs/
     HOME-VS-REPO.md         # home pointer vs project ambient log
     COLLISIONS.md
-    FLEET-REVIEW-TODO.md    # optional AGENTS/CLAUDE cleanup checklist
+    FLEET-REVIEW-TODO.md    # fleet checklist + capture-liveness eval design
   templates/
     HOME-AGENTS.snippet.md  # thin home brief
     new-repo-checklist.md   # enable + commit on new projects
