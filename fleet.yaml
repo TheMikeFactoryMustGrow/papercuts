@@ -70,6 +70,11 @@ repos:
     # fleet-rollout M4: enablement verified in-session (papercut status
     # project_enabled=true; smoke papercut logged+resolved). Adoption PR:
     # linglepedia-create-note#10.
+  - name: belief-plugin
+    enabled: 2026-08-23
+    # fleet-rollout M4: enablement verified in-session (papercut status
+    # project_enabled=true; smoke papercut logged+resolved). Adoption PR:
+    # belief-plugin#5.
   - name: investment-committee-plugin
     enabled: 2026-08-23
     # fleet-rollout M4: enablement verified in-session (papercut status
