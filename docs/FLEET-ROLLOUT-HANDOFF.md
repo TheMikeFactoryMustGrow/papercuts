@@ -53,8 +53,10 @@ Full Mode 2 adoptions:
 
 Mode-1-check repos (already enabled — imessage-search, beancount in batch 1,
 and any already-enabled repo in the full sweep) use a reduced Done-when:
-snippet currency confirmed (`papercut status` + template compare) and the
-fleet.yaml row's existence verified — no new row, no smoke-papercut PR (Mode 1
+snippet currency confirmed (`papercut status` + template compare), the
+fleet.yaml row's existence verified, and `.agent-papercuts/` still tracked by
+git (not gitignored or deleted since enablement) — all four Mode 1 gap-table
+rows — no new row, no smoke-papercut PR (Mode 1
 is read-only). The pr-template Mode 2 bar still applies where that half runs.
 
 ## Constraints the session must know
