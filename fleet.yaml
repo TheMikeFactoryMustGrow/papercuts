@@ -5,7 +5,10 @@
 # fleet-status reads this file; it never edits it.
 #
 # Seeded 2026-08-23 from docs/FLEET-REVIEW-TODO.md (repos enabled 2026-07-10).
-# `verified` = last session that confirmed real capture data, not just enable.
+# `verified` = last session that INSPECTED the repo's actual capture data —
+# present or absent; the row comment records the finding. It does NOT mean
+# "capturing": a silent repo can be verified. fleet-status must read the
+# event counts, never treat this date as evidence of capture.
 
 repos:
   - name: Linglepedia
