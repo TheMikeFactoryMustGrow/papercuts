@@ -518,11 +518,11 @@ def cmd_resolve(args: argparse.Namespace) -> int:
                 print(f"error: index {idx} out of range 1..{len(ordered)}", file=sys.stderr)
                 return 1
             selected.append(ordered[idx - 1])
-        seen: set[str] = set()
+        seen: set[tuple] = set()
         uniq = []
         for e in selected:
-            if e["stamp"] not in seen:
-                seen.add(e["stamp"])
+            if entry_key(e) not in seen:
+                seen.add(entry_key(e))
                 uniq.append(e)
         selected = uniq
     else:

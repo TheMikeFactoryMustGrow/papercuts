@@ -51,3 +51,9 @@ jobs:
           "$PAPERCUT" resolve --contains sigpipe -n "guard fixed"
           "$PAPERCUT" list | grep -q 'Second: autostash note'
           "$PAPERCUT" list | grep -q '(1 total'
+          # --index across stamp-siblings resolves BOTH (dedup keys on entry, not stamp)
+          tmp2="$(mktemp -d)"; cd "$tmp2" && git init -q
+          "$PAPERCUT" enable
+          printf '%s\n' '' '2026-08-06T03:27:18.616Z - m1 - a1' '' 'First: the SIGPIPE guard bug.' '' '2026-08-06T03:27:18.616Z - m1 - a1' '' 'Second: autostash note, same stamp.' '' >> .agent-papercuts/open.md
+          "$PAPERCUT" resolve --index 1 --index 2 -n "both fixed"
+          "$PAPERCUT" list | grep -q 'empty log'
