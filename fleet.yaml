@@ -90,6 +90,37 @@ repos:
     # fleet-rollout M4: enablement verified in-session (papercut status
     # project_enabled=true; smoke papercut logged+resolved). Adoption PR:
     # claude-scheduled-tasks#12.
+  - name: gix-investor-deck
+    enabled: 2026-08-23
+    # fleet-rollout M4: enablement verified in-session (papercut status
+    # project_enabled=true; smoke papercut logged+resolved). Adoption PR:
+    # gix-investor-deck#21.
+  - name: linglepedia-knowledge-agent
+    enabled: 2026-08-23
+    # fleet-rollout M4: enablement verified in-session (papercut status
+    # project_enabled=true; smoke papercut logged+resolved). Adoption PR:
+    # linglepedia-knowledge-agent#1.
+  - name: process-design-plugin-private
+    enabled: 2026-08-23
+    # fleet-rollout M4: repo was enabled earlier but never registered; snippet
+    # refreshed + loop proven in-session (papercut logged+resolved). Adoption
+    # PR: process-design-plugin-private#1.
+  - name: controller-console
+    enabled: 2026-08-23
+    # fleet-rollout M4: enablement verified in-session (papercut status
+    # project_enabled=true; smoke papercut logged+resolved). Adoption PR:
+    # controller-console#1.
+  - name: repo-audit
+    enabled: 2026-08-23
+    # fleet-rollout M4 (dormant sweep): enablement verified in-session
+    # (papercut status project_enabled=true; smoke papercut logged+resolved).
+    # Adoption PR: repo-audit#1.
+  - name: bsm-financial-model
+    enabled: 2026-08-23
+    # fleet-rollout M4 (dormant sweep): enablement verified in-session
+    # (papercut status project_enabled=true; smoke papercut logged+resolved).
+    # Adoption PR: bsm-financial-model#1. pr-template SKIP proposed (two-file
+    # static page, no rules to register) — Mike confirms at merge.
   - name: gix-sales-process
     enabled: 2026-08-23
     # fleet-rollout M4 (dormant sweep): enablement verified in-session
