@@ -40,6 +40,8 @@ repos:
   - name: autoresearch
     # renamed from karpathy-autoresearch 2026-08-23 (fleet-rollout M1, M1-FLEETYAML approved):
     # the GitHub repo is TheMikeFactoryMustGrow/autoresearch; no repo of the old name exists.
+    # 2026-08-23 M4: the GitHub copy had NO machinery (local-clone-only enablement);
+    # enabled in the GitHub copy via autoresearch#1, verified in-session.
     enabled: 2026-07-10
   - name: wbr-app
     enabled: 2026-07-10
