@@ -33,6 +33,16 @@ The skill family:
 Shared data layer: per-repo `.agent-papercuts/` + the package repo's
 `fleet.yaml` registry (+ future `fleet-status` snapshots).
 
+## Inputs & access
+
+- Shell execution; the `papercut` CLI on PATH or this skill's bundled script
+  (`<skills-dir>/papercuts-adopt/scripts/papercut`).
+- **Write access to TWO repos**: the target repo (AGENTS.md snippet +
+  `.agent-papercuts/`) and the papercuts package repo (`fleet.yaml` row) —
+  two repos, two PRs. On pr-only repos both land as PRs, never direct pushes.
+- Mode 1 needs only read access to the target repo plus the package repo's
+  `templates/AGENTS.snippet.md` and `fleet.yaml` for comparison.
+
 ## Mode 1 — Check ("is this repo wired?")
 
 From the target repo root:
@@ -76,6 +86,14 @@ will never sweep it).
 Done when: status green in the target repo, machinery merged (or PR open and
 ready), and the `fleet.yaml` row merged (or PR open and ready). Anything
 less: report which half is open.
+
+## Return
+
+- **Mode 1** returns the gap table in the chat response.
+- **Mode 2** returns the two PR URLs (machinery PR in the target repo,
+  registry PR in the papercuts repo) — or, where a repo allows direct
+  pushes, the commit SHAs — plus the closing `papercut status` output.
+  If either half is still open, say exactly which and why.
 
 ## Failure (do not)
 
