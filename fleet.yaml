@@ -85,3 +85,8 @@ repos:
     # fleet-rollout M4: enablement verified in-session (papercut status
     # project_enabled=true; smoke papercut logged+resolved). Adoption PR:
     # investment-committee-plugin#2.
+  - name: claude-scheduled-tasks
+    enabled: 2026-08-23
+    # fleet-rollout M4: enablement verified in-session (papercut status
+    # project_enabled=true; smoke papercut logged+resolved). Adoption PR:
+    # claude-scheduled-tasks#12.
