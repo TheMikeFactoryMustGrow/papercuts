@@ -37,6 +37,16 @@ ticket. The open list (`.agent-papercuts/open.md`) is a short sensor. The **shad
 
 ---
 
+## Inputs & access
+
+- Read access to `.agent-papercuts/history.jsonl` and `open.md` in the
+  target repo; the `papercut` CLI on PATH or this skill's bundled script
+  (`<skills-dir>/papercuts-kaizen/scripts/papercut`).
+- Write access only if the user said "and fix them" (K6) — the default
+  kaizen run is analyze + propose, read-only.
+
+---
+
 ## Data sources
 
 | Source | Path | Role |
@@ -145,6 +155,12 @@ paragraphs per escalated cluster.
 Default for kaizen: **analyze + propose**; implement only if user said “and fix them”.
 
 ### K7 Report
+
+**Validation first — the report must be falsifiable:** every cluster cites
+the ledger stamps it was built from; cluster sizes reconcile with
+`papercut history --stats` totals; every recurrence claim names its
+resolve-then-relog stamp pair. A cluster that can't cite stamps is dropped,
+not reported.
 
 Deliver:
 
