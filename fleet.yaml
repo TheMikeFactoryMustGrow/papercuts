@@ -75,6 +75,11 @@ repos:
     # fleet-rollout M4: enablement verified in-session (papercut status
     # project_enabled=true; smoke papercut logged+resolved). Adoption PR:
     # belief-plugin#5.
+  - name: drive-manager-plugin
+    enabled: 2026-08-23
+    # fleet-rollout M4: enablement verified in-session (papercut status
+    # project_enabled=true; smoke papercut logged+resolved). Adoption PR:
+    # drive-manager-plugin#5.
   - name: claude-scheduled-tasks
     enabled: 2026-08-23
     # fleet-rollout M4: enablement verified in-session (papercut status
