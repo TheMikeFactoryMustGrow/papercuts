@@ -92,6 +92,10 @@ then append `<UTC ISO-8601 stamp> - <model> - <author>`, a blank line, a one-par
 `.agent-papercuts/history.jsonl` gets ONE physical line per entry —
 `{{"event": "logged", "entry_stamp": "<stamp>", "model": "…", "author": "…", "body": "…", "ts": "<stamp>", "repo_root": "<abs git root>"}}`
 — string values JSON-escaped (quotes, backslashes, newlines), or the line silently drops from history views.
+
+No shell and no file write either (plain chat surface)? Do not drop the papercut:
+state it verbatim in your reply, flagged `PAPERCUT:`, so the user or a shelled
+session can log it properly later.
 {MARKER_END}
 """
 
