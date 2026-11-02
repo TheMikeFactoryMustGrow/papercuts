@@ -54,6 +54,8 @@ this tool only writes under `.agent-papercuts/` unless a legacy owned log exists
 Log:   `papercut "what you were doing → what got in the way"`
 Clear: `papercut resolve --stamp <ts> -n "what you fixed"`
 Sand:  skill **papercuts** · Long cycle: **papercuts-kaizen**
+Skill missing? `papercut install` (sources: skills/papercuts/ in github.com/TheMikeFactoryMustGrow/papercuts)
+Park for Mike: `papercut needs-mike --stamp <ts> -r "why only Mike can decide"`
 
 ---
 
@@ -114,6 +116,7 @@ SUBCOMMANDS = {
     "status",
     "resolve",
     "history",
+    "needs-mike",
 }
 
 
@@ -479,28 +482,8 @@ def cmd_list(args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_resolve(args: argparse.Namespace) -> int:
-    store = store_for(Path(args.cwd) if args.cwd else None)
-    emit_warnings(store)
-    path = store.open_path
-    if not path.exists():
-        print(f"error: no {path}", file=sys.stderr)
-        return 1
-    if not is_owned_open_file(path):
-        print(f"error: refusing to resolve foreign file {path}", file=sys.stderr)
-        return 1
-
-    text = path.read_text(encoding="utf-8")
-    entries = parse_entries(text)
-    if not entries:
-        print("(empty log — nothing to resolve)", file=sys.stderr)
-        return 1
-
-    note = (args.note or "").strip()
-    if not note:
-        print("error: -n/--note is required (one-line what you fixed)", file=sys.stderr)
-        return 2
-
+def select_entries(entries: list[dict], args: argparse.Namespace) -> list[dict] | int:
+    """Shared --stamp/--contains/--index selection. Returns entries or an exit code."""
     selected: list[dict] = []
     stamps = list(args.stamp or [])
     contains = args.contains
@@ -539,6 +522,34 @@ def cmd_resolve(args: argparse.Namespace) -> int:
             file=sys.stderr,
         )
         return 2
+    return selected
+
+
+def cmd_resolve(args: argparse.Namespace) -> int:
+    store = store_for(Path(args.cwd) if args.cwd else None)
+    emit_warnings(store)
+    path = store.open_path
+    if not path.exists():
+        print(f"error: no {path}", file=sys.stderr)
+        return 1
+    if not is_owned_open_file(path):
+        print(f"error: refusing to resolve foreign file {path}", file=sys.stderr)
+        return 1
+
+    text = path.read_text(encoding="utf-8")
+    entries = parse_entries(text)
+    if not entries:
+        print("(empty log — nothing to resolve)", file=sys.stderr)
+        return 1
+
+    note = (args.note or "").strip()
+    if not note:
+        print("error: -n/--note is required (one-line what you fixed)", file=sys.stderr)
+        return 2
+
+    selected = select_entries(entries, args)
+    if isinstance(selected, int):
+        return selected
 
     remove = {entry_key(e) for e in selected}
     removed = rewrite_log_without(path, remove)
@@ -562,6 +573,56 @@ def cmd_resolve(args: argparse.Namespace) -> int:
     print(f"  note: {note}")
     for e in removed:
         print(f"  - {e['stamp']}: {e['body'][:80]}{'…' if len(e['body']) > 80 else ''}")
+    return 0
+
+
+NEEDS_MIKE_RE = re.compile(r"^> needs-Mike \(\d{4}-\d{2}-\d{2} sand\):.*$", re.MULTILINE)
+
+
+def needs_mike_line(reason: str, date: str | None = None) -> str:
+    d = date or datetime.now().astimezone().strftime("%Y-%m-%d")
+    return f"> needs-Mike ({d} sand): {' '.join(reason.split())}"
+
+
+def cmd_needs_mike(args: argparse.Namespace) -> int:
+    """Mark open entries as parked for Mike with the canonical marker line,
+    so agents never hand-write it. Re-flagging replaces the old marker."""
+    store = store_for(Path(args.cwd) if args.cwd else None)
+    emit_warnings(store)
+    path = store.open_path
+    if not path.exists() or not is_owned_open_file(path):
+        print(f"error: no owned open log at {path}", file=sys.stderr)
+        return 1
+    reason = (args.reason or "").strip()
+    if not reason:
+        print("error: -r/--reason is required (why only Mike can decide)", file=sys.stderr)
+        return 2
+    text = path.read_text(encoding="utf-8")
+    entries = parse_entries(text)
+    if not entries:
+        print("(empty log — nothing to flag)", file=sys.stderr)
+        return 1
+    selected = select_entries(entries, args)
+    if isinstance(selected, int):
+        return selected
+    keys = {entry_key(e) for e in selected}
+    line = needs_mike_line(reason, args.date)
+    header, _ = split_header_and_body(text)
+    parts = [header.rstrip() + "\n\n"]
+    for e in entries:
+        b = e["body"]
+        if entry_key(e) in keys:
+            b = NEEDS_MIKE_RE.sub("", b).rstrip()
+            b = f"{b}\n\n{line}" if b else line
+            append_history(store.history_path, store.root, {
+                "event": "needs-mike", "entry_stamp": e["stamp"], "model": e["model"],
+                "author": e["author"], "reason": reason, "flagged_by": default_author(),
+            })
+        b = re.sub(r"\n{3,}", "\n\n", b)
+        parts.append(f"{e['stamp']} - {e['model']} - {e['author']}\n\n{b}\n\n")
+    path.write_text("".join(parts), encoding="utf-8")
+    print(f"flagged {len(keys)} entr{'y' if len(keys) == 1 else 'ies'} needs-Mike → {path}")
+    print(f"  {line}")
     return 0
 
 
@@ -968,9 +1029,16 @@ def build_parser() -> argparse.ArgumentParser:
     res.add_argument("--contains", default=None)
     res.add_argument("--index", type=int, action="append", default=None)
 
+    nm = sub.add_parser("needs-mike", help="park open entries for Mike (writes the > needs-Mike marker)")
+    nm.add_argument("-r", "--reason", required=True, help="why only Mike can decide")
+    nm.add_argument("--date", default=None, help="override marker date (YYYY-MM-DD)")
+    nm.add_argument("--stamp", action="append", default=None)
+    nm.add_argument("--contains", default=None)
+    nm.add_argument("--index", type=int, action="append", default=None)
+
     hist = sub.add_parser("history", help="read shadow ledger")
     hist.add_argument("-n", type=int, default=None)
-    hist.add_argument("--event", choices=("logged", "resolved"), default=None)
+    hist.add_argument("--event", choices=("logged", "resolved", "needs-mike"), default=None)
     hist.add_argument("--stats", action="store_true")
 
     sub.add_parser("path", help="print path to open log")
@@ -1035,6 +1103,7 @@ def main(argv: list[str] | None = None) -> int:
         "status": cmd_status,
         "resolve": cmd_resolve,
         "history": cmd_history,
+        "needs-mike": cmd_needs_mike,
     }
     fn = dispatch.get(args.command)
     if not fn:
