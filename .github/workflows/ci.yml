@@ -12,7 +12,12 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Syntax
-        run: python3 -m py_compile scripts/papercut
+        run: |
+          python3 -m py_compile scripts/papercut
+          bash -n scripts/wt.sh
+
+      - name: wt.sh behavior (one worktree per session, squash-merge is done)
+        run: bash tests/wt_test.sh
 
       - name: REQUIREMENTS register lint (well-formed rows, unique IDs, fitness metric)
         run: |

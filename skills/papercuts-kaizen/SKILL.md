@@ -156,7 +156,7 @@ Default for kaizen: **analyze + propose**; implement only if user said “and fi
 
 When a proposal touches git workflow, check it against the fleet git hygiene
 rules in the **papercuts** skill (G-a stale lock, G-b PR-state re-check
-before push, G-c one `wt.sh` worktree per session, no autostash in shared
+before push, G-c one `scripts/wt.sh` worktree per session, no autostash in shared
 trees). Recurrences of those mechanisms are rule violations to cite. They are not new proposals.
 
 ### K7 Report
