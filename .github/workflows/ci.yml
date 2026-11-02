@@ -116,3 +116,20 @@ jobs:
           PAPERCUT_AUTHOR='Jane Doe' "$PAPERCUT" -m 'claude opus' "spaced header fields"
           grep -q ' - claude-opus - Jane-Doe$' .agent-papercuts/open.md
           "$PAPERCUT" list | grep -q '(1 total'
+
+      - name: Regression — needs-mike writes the canonical marker (replace, not stack)
+        run: |
+          PAPERCUT="$PWD/scripts/papercut"
+          tmp="$(mktemp -d)"; cd "$tmp" && git init -q
+          "$PAPERCUT" enable
+          "$PAPERCUT" -m ci "Stale index.lock blocked merge."
+          "$PAPERCUT" -m ci "Unrelated entry."
+          "$PAPERCUT" needs-mike --contains index.lock -r "fleet  policy call." --date 2026-11-01
+          grep -qx '> needs-Mike (2026-11-01 sand): fleet policy call.' .agent-papercuts/open.md
+          "$PAPERCUT" needs-mike --contains index.lock -r "updated." --date 2026-11-02
+          test "$(grep -c '^> needs-Mike' .agent-papercuts/open.md)" = 1
+          grep -qx '> needs-Mike (2026-11-02 sand): updated.' .agent-papercuts/open.md
+          "$PAPERCUT" list | grep -q '(2 total'
+          grep -q '"event": "needs-mike"' .agent-papercuts/history.jsonl
+          ! "$PAPERCUT" needs-mike --contains nomatch -r "x"
+          grep -q 'papercut install' .agent-papercuts/open.md

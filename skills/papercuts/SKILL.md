@@ -154,6 +154,7 @@ papercut list -n 10
 papercut resolve --stamp <ts> -n "what you fixed"   # clear open entry + history event=resolved
 papercut resolve --contains "vitest" -n "…"
 papercut resolve --index 1 --index 2 -n "…"           # indices from list (newest first)
+papercut needs-mike --stamp <ts> -r "why only Mike can decide"  # writes > needs-Mike marker
 papercut history -n 20
 papercut history --stats
 papercut path
@@ -172,6 +173,39 @@ python3 <skills-dir>/papercuts/scripts/papercut status
 ```
 
 Common skill dirs: `~/.claude/skills`, `~/.grok/skills`, `~/.agents/skills`.
+
+---
+
+## Fleet git hygiene (Mike ruling 2026-11-01)
+
+Sanding often means committing in a repo other agents share. Three rules apply
+to every fleet agent. They come from parked needs-Mike papercuts (stale lock,
+push to a merged PR, autostash collision in a shared tree):
+
+- **G-a Stale index lock.** If `.git/index.lock` (in a worktree:
+  `$(git rev-parse --git-dir)/index.lock`) blocks you, remove it only when it
+  is **0 bytes** and **no git process holds it**. Check with
+  `lsof <lock>` / `fuser <lock>` and `pgrep -x git`. Otherwise **fail loudly**:
+  report the lock path, size, and holder pid. Do not wait it out or delete it anyway.
+  ```bash
+  lock="$(git rev-parse --git-path index.lock)"
+  if [ -e "$lock" ] && [ ! -s "$lock" ] && ! fuser "$lock" >/dev/null 2>&1 && ! pgrep -x git >/dev/null; then
+    rm -f "$lock"
+  elif [ -e "$lock" ]; then echo "index.lock held/non-empty: $lock" >&2; exit 1; fi
+  ```
+- **G-b Re-check PR state before pushing.** Before you push to your own PR
+  branch, run `gh pr view <branch> --json state -q .state`. If it is `MERGED` or
+  `CLOSED`, do **not** push. Cut a fresh branch from the current default branch
+  (`git fetch origin && git switch -c <new> origin/<default>`), cherry-pick
+  your new commits, and open a new PR.
+- **G-c One worktree per session.** Get your working copy with
+  `wt.sh get <repo-url> <branch>` and release it with `wt.sh done <path>`.
+  Never run `git pull --rebase --autostash` (or any autostash) in a shared
+  working copy, because another session's uncommitted edits ride along.
+
+Parking an entry for Mike: `papercut needs-mike --stamp <ts> -r "reason"`
+writes the canonical `> needs-Mike (YYYY-MM-DD sand): reason` line. Never
+hand-write that marker.
 
 ---
 

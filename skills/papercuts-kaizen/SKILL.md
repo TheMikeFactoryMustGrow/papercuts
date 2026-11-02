@@ -150,9 +150,14 @@ paragraphs per escalated cluster.
 |-------|--------|
 | Repo-local, fixable now | Optional small fixes **if user asked to implement**; else propose |
 | Harness / global agent config | **Propose only** |
-| Needs product decision | Defer with owner question |
+| Needs product decision | Defer with owner question: `papercut needs-mike --stamp <ts> -r "…"` (never hand-write the marker) |
 
 Default for kaizen: **analyze + propose**; implement only if user said “and fix them”.
+
+When a proposal touches git workflow, check it against the fleet git hygiene
+rules in the **papercuts** skill (G-a stale lock, G-b PR-state re-check
+before push, G-c one `wt.sh` worktree per session, no autostash in shared
+trees). Recurrences of those mechanisms are rule violations to cite. They are not new proposals.
 
 ### K7 Report
 
@@ -179,6 +184,7 @@ Deliver:
 papercut history --stats
 papercut history --event resolved -n 50
 papercut history --event logged -n 50
+papercut history --event needs-mike -n 50     # entries parked for Mike
 papercut list
 ```
 
