@@ -62,6 +62,11 @@ if "$WT" get "$URL" feat-h 2>/dev/null; then fail "claim should still block"; fi
 "$WT" release; [[ -d "$d7" ]] || fail "release removed worktree"
 "$WT" get "$URL" feat-h >/dev/null || fail "release did not drop claim"
 echo "ok release"
+# 8. concurrent gets in one session: exactly one claim wins
+export WT_SESSION=s8; ok=0
+for b in r1 r2 r3; do ( "$WT" get "$URL" "$b" >/dev/null 2>&1 && echo "$b" >> "$T/won" ) & done; wait
+[[ $(wc -l < "$T/won") == 1 ]] || fail "concurrent gets claimed $(wc -l < "$T/won") worktrees"
+echo "ok session-lock"
 grep -q -- '--autostash' "$WT" && grep -v '^#' "$WT" | grep -q -- '--autostash' && fail "wt.sh runs autostash"
 echo "ok no-autostash"
 echo "wt.sh tests passed"

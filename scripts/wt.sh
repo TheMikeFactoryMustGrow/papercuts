@@ -63,7 +63,11 @@ ensure_repo(){ # $1 url $2 gitdir
   git -C "$2" remote set-head origin --auto >/dev/null 2>&1 || true
 }
 
-cmd_get(){
+# Session check + write happen under a per-session lock (fd 8, separate from the repo lock on fd 9)
+# so two concurrent `get`s in one session cannot both claim a worktree.
+cmd_get(){ exec 8>"$SESS_DIR/$SESSION.lock"; flock -w 600 8 || die "lock timeout session $SESSION"
+  local rc=0; _cmd_get "$@" || rc=$?; exec 8>&-; return $rc; }
+_cmd_get(){
   local url="$1" br="$2" key gd dir id
   key=$(key_for "$url"); gd="$REPOS/$key.git"
   if [[ -f "$SESS_FILE" ]]; then
