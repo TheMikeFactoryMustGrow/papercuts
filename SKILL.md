@@ -199,9 +199,15 @@ push to a merged PR, autostash collision in a shared tree):
   (`git fetch origin && git switch -c <new> origin/<default>`), cherry-pick
   your new commits, and open a new PR.
 - **G-c One worktree per session.** Get your working copy with
-  `wt.sh get <repo-url> <branch>` and release it with `wt.sh done <path>`.
-  Never run `git pull --rebase --autostash` (or any autostash) in a shared
-  working copy, because another session's uncommitted edits ride along.
+  `scripts/wt.sh get <repo-url> <branch>` (canonical copy lives in this repo at
+  `scripts/wt.sh`) and release it with `wt.sh done <path>`. A *session* is
+  `$WT_SESSION` if set (set it to your agent/chat id), else the caller's Unix
+  session id; `wt.sh` records the claim in `$WT_ROOT/sessions/<session>.wt`
+  and refuses a second worktree until `done` releases it (`wt.sh session`
+  shows the claim). `done` treats a branch whose PR `gh` reports MERGED as
+  done, including squash merges. Never run `git pull --rebase --autostash`
+  (or any autostash) in a shared working copy, because another session's
+  uncommitted edits ride along.
 
 Parking an entry for Mike: `papercut needs-mike --stamp <ts> -r "reason"`
 writes the canonical `> needs-Mike (YYYY-MM-DD sand): reason` line. Never
