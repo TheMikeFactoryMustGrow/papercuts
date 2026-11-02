@@ -4,6 +4,7 @@
 #   wt.sh done <path>               -> removes worktree if clean & fully pushed; else keeps + logs
 #   wt.sh list                      -> lists all worktrees under WT_ROOT
 #   wt.sh session                   -> prints this session's id and its worktree (if any)
+#   wt.sh release                   -> drops this session's claim; keeps the worktree on disk
 # Env: WT_ROOT (default /workspace) -> $WT_ROOT/repos/<key>.git, $WT_ROOT/wt/<key>/<branch>-<id>
 #      WT_LOG  (default $WT_ROOT/repos/wt.log)
 #      WT_SESSION  session id (default: unix session id of the caller, "sid-<SID>")
@@ -129,6 +130,8 @@ cmd_done(){
 release_session(){ local f cur; for f in "$SESS_DIR"/*.wt; do [[ -f "$f" ]] || continue
   read -r cur _ < "$f" || true; [[ "$cur" == "$1" ]] && rm -f "$f"; done; return 0; }
 cmd_session(){ echo "session=$SESSION"; [[ -f "$SESS_FILE" ]] && cat "$SESS_FILE" || true; }
+cmd_release(){ if [[ -f "$SESS_FILE" ]]; then local cur; read -r cur _ < "$SESS_FILE" || true
+  rm -f "$SESS_FILE"; log "RELEASE session=$SESSION ${cur:-} (worktree kept)"; else log "RELEASE session=$SESSION (no claim)"; fi; }
 cmd_list(){ for gd in "$REPOS"/*.git; do [[ -d "$gd" ]] && git -C "$gd" worktree list; done; }
 
 case "${1:-}" in
@@ -136,5 +139,6 @@ case "${1:-}" in
   done) [[ $# -eq 2 ]] || die "usage: wt.sh done <path>"; cmd_done "$2";;
   list) cmd_list;;
   session) cmd_session;;
-  *) echo "usage: wt.sh get <repo-url> <branch> | done <path> | list | session" >&2; exit 2;;
+  release) cmd_release;;
+  *) echo "usage: wt.sh get <repo-url> <branch> | done <path> | list | session | release" >&2; exit 2;;
 esac

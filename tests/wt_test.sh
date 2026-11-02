@@ -55,6 +55,13 @@ echo "ok fork-pr-ignored"
 echo "feat-d acme $(git -C "$d4" rev-parse HEAD) 4" > "$T/merged"
 "$WT" done "$d4"; [[ ! -d "$d4" ]] || fail "merged head == HEAD not removed"
 echo "ok merged-head-match-removed"
+# 7. release drops the claim of a KEPT worktree without removing it
+d7=$("$WT" get "$URL" feat-g); git -C "$d7" commit -q --allow-empty -m keep
+"$WT" done "$d7"; [[ -d "$d7" ]] || fail "unpushed removed"
+if "$WT" get "$URL" feat-h 2>/dev/null; then fail "claim should still block"; fi
+"$WT" release; [[ -d "$d7" ]] || fail "release removed worktree"
+"$WT" get "$URL" feat-h >/dev/null || fail "release did not drop claim"
+echo "ok release"
 grep -q -- '--autostash' "$WT" && grep -v '^#' "$WT" | grep -q -- '--autostash' && fail "wt.sh runs autostash"
 echo "ok no-autostash"
 echo "wt.sh tests passed"
