@@ -15,7 +15,9 @@
 #   `done` releases the claim. This script never runs `pull --rebase --autostash`;
 #   never do that in a shared working copy either.
 # Merged check: `done` treats a branch as pushed/done when commits are reachable
-#   from origin OR `gh` reports a MERGED PR for the branch (covers squash merges).
+#   from origin OR `gh` reports a MERGED PR from this repo (not a fork) for the branch
+#   whose head commit is local HEAD or contains it (covers squash merges; a commit made
+#   after the merge, or a reused branch name, is KEPT).
 set -euo pipefail
 WT_ROOT="${WT_ROOT:-/workspace}"
 REPOS="$WT_ROOT/repos"; TREES="$WT_ROOT/wt"
@@ -26,11 +28,23 @@ session_id(){ local s="${WT_SESSION:-}"
   if [[ -z "$s" ]]; then s="sid-$(ps -o sid= -p $$ | tr -d ' ')"; fi
   printf '%s' "${s//[^A-Za-z0-9._-]/_}"; }
 SESSION="$(session_id)"; SESS_FILE="$SESS_DIR/$SESSION.wt"
-# gh_merged <repo-url> <branch> -> 0 if a MERGED PR exists for the branch (squash/rebase/merge)
-gh_merged(){ local u="${1%.git}" slug; u="${u#*://}"; u="${u#*@}"; u="${u/:/\/}"; slug="${u#*/}"
+# gh_merged <repo-url> <branch> <gitdir> <worktree> -> 0 only if a MERGED PR from this repo's own
+#   branch (not a fork with the same name) has a head commit equal to, or descending from, local HEAD.
+#   Branch-name match alone is not enough: a reused name or a commit made after the merge must be KEPT.
+gh_merged(){ local u="${1%.git}" slug owner head line o oid num; u="${u#*://}"; u="${u#*@}"; u="${u/:/\/}"; slug="${u#*/}"
+  owner=$(key_for "$1"); owner="${owner%%__*}"; owner="${owner,,}"
   command -v gh >/dev/null 2>&1 || return 1
-  local n; n=$(gh pr list --repo "$slug" --head "$2" --state merged --json number -q 'length' 2>/dev/null) || return 1
-  [[ "${n:-0}" -gt 0 ]]; }
+  head=$(git -C "$4" rev-parse HEAD) || return 1
+  local out; out=$(gh pr list --repo "$slug" --head "$2" --state merged --limit 100 \
+    --json number,headRefOid,headRepositoryOwner \
+    -q '.[] | "\(.headRepositoryOwner.login) \(.headRefOid) \(.number)"' 2>/dev/null) || return 1
+  while read -r o oid num; do
+    [[ -n "$oid" && "${o,,}" == "$owner" ]] || continue
+    [[ "$oid" == "$head" ]] && return 0
+    git -C "$3" cat-file -e "$oid^{commit}" 2>/dev/null || git -C "$3" fetch --quiet origin "refs/pull/$num/head" 2>/dev/null || true
+    git -C "$3" merge-base --is-ancestor "$head" "$oid" 2>/dev/null && return 0
+  done <<<"$out"
+  return 1; }
 log(){ printf '%s %s %s\n' "$(date '+%F %T %Z')" "${AGENT_NAME:-$(whoami)}" "$*" >>"$WT_LOG"; echo "wt: $*" >&2; }
 die(){ log "ERROR $*"; exit 1; }
 key_for(){ local u="${1%.git}"; u="${u%/}"; u="${u#*://}"; u="${u#*@}"; u="${u/:/\/}"
@@ -98,7 +112,7 @@ cmd_done(){
     if [[ -n "$dirty" ]]; then log "KEEP $p reason=dirty files: $(echo "$dirty" | tr '\n' ' ')"; return 0; fi
     unpushed=$(git -C "$p" rev-list --count HEAD --not --remotes=origin)
     if [[ "$unpushed" != 0 ]]; then
-      if [[ -n "$br" ]] && gh_merged "$url" "$br"; then merged=1; log "MERGED $p branch=$br (PR merged per gh; unreachable commits=$unpushed, e.g. squash)"
+      if [[ -n "$br" ]] && gh_merged "$url" "$br" "$gd" "$p"; then merged=1; log "MERGED $p branch=$br (PR merged per gh; unreachable commits=$unpushed, e.g. squash)"
       else log "KEEP $p reason=unpushed commits=$unpushed"; return 0; fi
     fi
     git -C "$gd" worktree remove "$p"
