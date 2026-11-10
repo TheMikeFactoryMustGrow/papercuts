@@ -1,17 +1,17 @@
 name: ready-for-review-ping
 
-# When a draft PR is marked ready, post a PR comment so Oracle's comment
-# listener gets a push. Routines cannot subscribe to GitHub's ready_for_review
-# event; they do wake on issue_comment / pull_request review comments.
-# No third-party actions — GITHUB_TOKEN + gh CLI only (satisfies action-pin
-# conventions: there are no uses: refs to pin).
+# When a draft PR is marked ready, POST JSON to Oracle's ready-for-review
+# webhook routine. Routines cannot subscribe to GitHub's ready_for_review
+# event. No third-party actions (satisfies action-pin lint: zero uses: refs).
+# Secrets: ORACLE_READY_WEBHOOK_URL, ORACLE_READY_WEBHOOK_KEY (repo secrets
+# from the "PR ready-for-review webhook" routine panel). If either is unset,
+# the job exits 0 so CI stays green until Mike adds them.
 
 on:
   pull_request:
     types: [ready_for_review]
 
-permissions:
-  pull-requests: write
+permissions: {}
 
 jobs:
   ping:
@@ -20,25 +20,40 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Comment ready for review
+      - name: POST ready-for-review webhook
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR: ${{ github.event.pull_request.number }}
-          REPO: ${{ github.repository }}
+          WEBHOOK_URL: ${{ secrets.ORACLE_READY_WEBHOOK_URL }}
+          WEBHOOK_KEY: ${{ secrets.ORACLE_READY_WEBHOOK_KEY }}
         run: |
           set -euo pipefail
-          # Owner from PR body via API + jq only (never interpolate body into the shell).
-          # Strip markdown bold so **Owner:** matches; allowlist keeps the token safe.
-          OWNER="$(gh api "repos/${REPO}/pulls/${PR}" --jq '
-            (.body // "")
-            | gsub("\\*\\*";"")
-            | capture("(?i)(?:^|\\n)\\s*Owner:\\s*(?<o>[^\\n]+)"; "m")
-            | .o
-            | gsub("^\\s+|\\s+$";"")
-            | select(test("^[A-Za-z0-9 _./&+-]{1,64}$"))
-          ' 2>/dev/null || true)"
-          BODY='ready for review (auto: PR left draft) @Oracle'
-          if [ -n "${OWNER}" ]; then
-            BODY="${BODY} owner: ${OWNER}"
+          if [ -z "${WEBHOOK_URL}" ] || [ -z "${WEBHOOK_KEY}" ]; then
+            echo "ORACLE_READY_WEBHOOK_URL / ORACLE_READY_WEBHOOK_KEY not set — skipping ping (exit 0 until Mike adds the secrets from the PR ready-for-review webhook routine panel)."
+            exit 0
           fi
-          gh pr comment "${PR}" -R "${REPO}" --body "${BODY}"
+          echo "::add-mask::${WEBHOOK_KEY}"
+          # Build JSON from the event payload with jq only.
+          # Owner from PR body: strip markdown bold so **Owner:** and Owner: both match.
+          # Never interpolate the PR body into the shell.
+          PAYLOAD="$(jq -c '
+            . as $e
+            | (($e.pull_request.body // "")
+               | gsub("\\*\\*";"")
+               | (capture("(?i)(?:^|\\n)\\s*Owner:\\s*(?<o>[^\\n]+)"; "m")? // {o:""})
+               | .o
+               | gsub("^\\s+|\\s+$";"")
+               | if test("^[A-Za-z0-9 _./&+-]{1,64}$") then . else "" end) as $owner
+            | {
+                repo: $e.repository.full_name,
+                pr: $e.pull_request.number,
+                head_sha: $e.pull_request.head.sha,
+                owner: $owner,
+                event: "ready_for_review"
+              }
+          ' "$GITHUB_EVENT_PATH")"
+          curl --silent --show-error --fail-with-body --max-time 8 \
+            -X POST \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer ${WEBHOOK_KEY}" \
+            -H "X-Automation-Key: ${WEBHOOK_KEY}" \
+            --data "${PAYLOAD}" \
+            "${WEBHOOK_URL}"
