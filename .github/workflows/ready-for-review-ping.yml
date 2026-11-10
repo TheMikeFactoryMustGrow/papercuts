@@ -1,0 +1,59 @@
+name: ready-for-review-ping
+
+# When a draft PR is marked ready, POST JSON to Oracle's ready-for-review
+# webhook routine. Routines cannot subscribe to GitHub's ready_for_review
+# event. No third-party actions (satisfies action-pin lint: zero uses: refs).
+# Secrets: ORACLE_READY_WEBHOOK_URL, ORACLE_READY_WEBHOOK_KEY (repo secrets
+# from the "PR ready-for-review webhook" routine panel). If either is unset,
+# the job exits 0 so CI stays green until Mike adds them.
+
+on:
+  pull_request:
+    types: [ready_for_review]
+
+permissions: {}
+
+jobs:
+  ping:
+    # Same-repo PRs only (skip forks).
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: POST ready-for-review webhook
+        env:
+          WEBHOOK_URL: ${{ secrets.ORACLE_READY_WEBHOOK_URL }}
+          WEBHOOK_KEY: ${{ secrets.ORACLE_READY_WEBHOOK_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${WEBHOOK_URL}" ] || [ -z "${WEBHOOK_KEY}" ]; then
+            echo "ORACLE_READY_WEBHOOK_URL / ORACLE_READY_WEBHOOK_KEY not set — skipping ping (exit 0 until Mike adds the secrets from the PR ready-for-review webhook routine panel)."
+            exit 0
+          fi
+          echo "::add-mask::${WEBHOOK_KEY}"
+          # Build JSON from the event payload with jq only.
+          # Owner from PR body: strip markdown bold so **Owner:** and Owner: both match.
+          # Never interpolate the PR body into the shell.
+          PAYLOAD="$(jq -c '
+            . as $e
+            | (($e.pull_request.body // "")
+               | gsub("\\*\\*";"")
+               | (capture("(?i)(?:^|\\n)\\s*Owner:\\s*(?<o>[^\\n]+)"; "m")? // {o:""})
+               | .o
+               | gsub("^\\s+|\\s+$";"")
+               | if test("^[A-Za-z0-9 _./&+-]{1,64}$") then . else "" end) as $owner
+            | {
+                repo: $e.repository.full_name,
+                pr: $e.pull_request.number,
+                head_sha: $e.pull_request.head.sha,
+                owner: $owner,
+                event: "ready_for_review"
+              }
+          ' "$GITHUB_EVENT_PATH")"
+          curl --silent --show-error --fail-with-body --max-time 8 \
+            -X POST \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer ${WEBHOOK_KEY}" \
+            -H "X-Automation-Key: ${WEBHOOK_KEY}" \
+            --data "${PAYLOAD}" \
+            "${WEBHOOK_URL}"
