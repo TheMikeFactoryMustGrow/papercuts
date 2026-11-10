@@ -1,0 +1,43 @@
+name: ready-for-review-ping
+
+# When a draft PR is marked ready, post a PR comment so Oracle's comment
+# listener gets a push. Routines cannot subscribe to GitHub's ready_for_review
+# event; they do wake on issue_comment / pull_request review comments.
+# No third-party actions — GITHUB_TOKEN + gh CLI only (satisfies action-pin
+# conventions: there are no uses: refs to pin).
+
+on:
+  pull_request:
+    types: [ready_for_review]
+
+permissions:
+  pull-requests: write
+
+jobs:
+  ping:
+    # Same-repo PRs only (skip forks).
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Comment ready for review
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          # Owner from PR body via API + jq only (never interpolate body into the shell).
+          # Allowlist keeps the appended token short and injection-safe.
+          OWNER="$(gh api "repos/${REPO}/pulls/${PR}" --jq '
+            (.body // "")
+            | capture("(?i)(?:^|\\n)\\s*Owner:\\s*(?<o>[^\\n]+)"; "m")
+            | .o
+            | gsub("^\\s+|\\s+$";"")
+            | select(test("^[A-Za-z0-9 _./&+-]{1,64}$"))
+          ' 2>/dev/null || true)"
+          BODY='ready for review (auto: PR left draft) @Oracle'
+          if [ -n "${OWNER}" ]; then
+            BODY="${BODY} owner: ${OWNER}"
+          fi
+          gh pr comment "${PR}" -R "${REPO}" --body "${BODY}"

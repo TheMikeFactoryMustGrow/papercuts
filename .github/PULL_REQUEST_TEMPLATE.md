@@ -3,6 +3,15 @@
   Reviewers evaluate the *reasoning*, not only the diff.
 -->
 
+<!--
+  Owner (required): name the Grok Bot that wrote this PR
+  (Bean Counter, Daedalus, Closer, Scout, Board & IR, VEGA, Oracle, …),
+  or 'mike' for PRs Mike opened himself, or 'claude' for Claude-authored PRs.
+  Oracle routes review results to that bot; for mike/claude the review stays
+  on the PR and Oracle tells Mike in Grok Bot.
+-->
+**Owner:** <!-- bot name | mike | claude -->
+
 ## Summary
 
 <!-- 1–3 bullets: what changed in concrete terms -->
