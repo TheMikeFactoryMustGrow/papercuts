@@ -31,8 +31,15 @@ jobs:
           # Allowlist keeps the appended token short and injection-safe.
           OWNER="$(gh api "repos/${REPO}/pulls/${PR}" --jq '
             (.body // "")
-            | capture("(?i)(?:^|\\n)\\s*Owner:\\s*(?<o>[^\\n]+)"; "m")
+            | gsub("\*\*";"")
+            | capture("(?i)(?:^|\n)\s*Owner:\s*(?<o>[^\n]+)"; "m")
             | .o
+            | gsub("^\s+|\s+$";"")
+            | select(test("^[A-Za-z0-9 _./&+-]{1,64}$"))
+          ' 2>/dev/null || true)"; "m")
+            | .o
+            | gsub("^\\s+|\\s+$";"")
+            | gsub("\\*?\\*?$";"")
             | gsub("^\\s+|\\s+$";"")
             | select(test("^[A-Za-z0-9 _./&+-]{1,64}$"))
           ' 2>/dev/null || true)"
