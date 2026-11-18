@@ -152,7 +152,7 @@ papercut status    # expect project_enabled=true
 ```markdown
 <!-- papercuts:begin -->
 ## Log papercuts
-… papercut -m <model> "what you were doing → what got in the way" …
+… papercut -m <model> --goal "…" --attempted "…" --happened "…" --workaround "…" --ideal-outcome "…" …
 <!-- papercuts:end -->
 ```
 
@@ -195,14 +195,33 @@ papercut status
 **Log (agents, mid-work):**
 
 ```bash
-papercut -m claude-opus "While running tests, vitest cwd is apps/web so root-relative paths miss."
+papercut -m claude-opus \
+  --goal "Run the unit tests from the repo root." \
+  --attempted "vitest with a root-relative fixture path" \
+  --happened "cwd is apps/web so the fixture path misses." \
+  --workaround "cd to repo root before the test" \
+  --ideal-outcome "vitest finds the fixture from the repo root so the suite can finish without a manual cd"
 # also appends event=logged to .agent-papercuts/history.jsonl
+# optional: --suggested-fix "Document the apps/web test cwd in AGENTS.md"
 ```
+
+Every new log needs those five fields (what you were trying to do and why, what
+you ran, what happened, the workaround, and the ideal outcome — the exact
+output or result you wanted back, and what you needed it for). Describe that
+target state so a later fixer can start with the goal and work backwards,
+instead of prescribing "fix this, fix that" and running in circles.
+`suggested_fix` is optional and never required. If a required field is
+unknown, use `unknown — <reason>` so logging is never blocked. The format
+improves later feedback; it does **not** gate fixing already-open items.
+`papercut check` reports thin entries and always exits 0. Existing open items
+are left as they are (including older entries that have `proposed_fix`), and
+`papercut resolve` still clears them.
 
 **Inspect:**
 
 ```bash
 papercut list
+papercut check    # informational; thin entries do not block resolve
 papercut path
 papercut history --stats
 ```
@@ -267,7 +286,7 @@ papercuts/
     papercuts/SKILL.md
     papercuts-kaizen/SKILL.md   # long-cycle pattern review
     papercuts-adopt/SKILL.md    # roll out to a repo + register in the fleet
-  scripts/papercut              # CLI: log, resolve, history, enable, install
+  scripts/papercut              # CLI: log, check, resolve, history, enable, install
   docs/
     HOME-VS-REPO.md         # home pointer vs project ambient log
     COLLISIONS.md

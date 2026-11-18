@@ -147,12 +147,18 @@ Deeper causal analysis only if the **user** explicitly asks.
 ```bash
 papercut status                              # project setup check
 papercut enable                              # AGENTS snippet + `.agent-papercuts/` + history dir
-papercut "one or two sentences: …"           # log (also appends history event=logged)
-papercut log -m <model-tag> -a <author> "…"
+papercut log -m <model-tag> -a <author> \
+  --goal "<what you were trying to do, and why>" \
+  --attempted "<tool or command and its inputs; redact secrets>" \
+  --happened "<the error or the wrong result>" \
+  --workaround "<what you did instead, or none>" \
+  --ideal-outcome "<the exact output or result you wanted back, and what you needed it for>" \
+  # --suggested-fix "<optional; never required>"
 papercut list
 papercut list -n 10
+papercut check                               # report thin open entries (informational; always exits 0)
 papercut resolve --stamp <ts> -n "what you fixed"   # clear open entry + history event=resolved
-papercut resolve --contains "vitest" -n "…"
+papercut resolve --contains "vitest" -n "…"           # matches entry text only (not field labels); >1 match needs --all
 papercut resolve --index 1 --index 2 -n "…"           # indices from list (newest first)
 papercut needs-mike --stamp <ts> -r "why only Mike can decide"  # writes > needs-Mike marker
 papercut history -n 20
@@ -161,6 +167,27 @@ papercut path
 papercut init                                # log file only (no AGENTS snippet)
 papercut install                             # machine: papercuts + papercuts-kaizen + PATH
 ```
+
+**Rich context (new logs only).** Every new papercut must carry `goal`,
+`attempted`, `happened`, `workaround`, and `ideal_outcome` — the same kind of
+context a PR template asks for. `ideal_outcome` is the exact output or result
+the bot wanted back, and what it needed it for. Describe that target state so
+a later fixer can start with the goal and work backwards, instead of
+prescribing "fix this, fix that" and running in circles. `suggested_fix` is
+optional and never required. The CLI refuses a blank or missing required field
+and names it. If you cannot fill one, use `unknown — <reason>` so logging is
+never blocked. A retry of the same papercut is idempotent (no duplicate), even
+after the entry was parked with `needs-mike`; a retry that adds or changes
+`suggested_fix` is a different papercut. A labeled body works newline-separated
+(labels at line starts are authoritative; a label mentioned inside a value is never
+split out, so a missing field is refused and named) or on one line. `--contains` (resolve / needs-mike) ignores field labels and the
+needs-Mike marker, and refuses to act on more than one match without `--all`.
+
+This format improves future feedback. It does **not** gate fixing already-open
+items. Existing thin entries are grandfathered: leave them as they are
+(including older entries that have `proposed_fix`), `papercut check` reports
+them and always exits 0, and `papercut resolve` still clears them. The queue
+still gets sanded.
 
 **Retention:** open list is **delete-on-fix** via `resolve`. History is **append-only**.
 Never hand-delete entries from `PAPERCUTS.md` — that skips the ledger and starves kaizen.
@@ -227,7 +254,9 @@ Keep working the user’s task. Papercuts are non-blocking.
    - Yes: environmental/tooling/docs/gotcha; you recovered or worked around  
    - No: pure “I should have read the file,” pure experiment noise → **do not log**  
    - Ambiguous → prefer log (later fix pass can skip)  
-3. **L2** — `papercut -m <model> "…"` immediately (don’t batch until end).  
+3. **L2** — log immediately with all five fields (don’t batch until end):
+   `papercut -m <model> --goal "…" --attempted "…" --happened "…" --workaround "…" --ideal-outcome "…"`. Optional: `--suggested-fix "…"`.
+   If a field is unknown, use `unknown — <reason>`.  
 4. Continue the task.
 
 **Don’t:** open the issue tracker for papercuts; mine the full session transcript unprompted.
@@ -244,6 +273,7 @@ Run **Bootstrap gate** first. If user declines enable and log is missing → emp
 
 ```bash
 papercut path && papercut list
+papercut check    # optional; informational only — thin entries do not block this pass
 ```
 
 State the resolved path in your report. Wrong tree → stop and clarify.
