@@ -8,8 +8,8 @@ Open list: delete-on-fix via `papercut resolve`.
 Shadow ledger: append-only history.jsonl for papercuts-kaizen.
 
 Usage:
-  papercut "message"
-  papercut log|list|resolve|history|path|init|status|enable|install
+  papercut log --goal "..." --attempted "..." --happened "..." --workaround "..." --proposed-fix "..."
+  papercut log|list|check|resolve|history|path|init|status|enable|install
 """
 
 from __future__ import annotations
@@ -51,8 +51,9 @@ This file is **agent tooling** (coding-agent friction), not product content.
 If you are building a game/app about papercuts, your product files live elsewhere;
 this tool only writes under `.agent-papercuts/` unless a legacy owned log exists.
 
-Log:   `papercut "what you were doing → what got in the way"`
+Log:   `papercut --goal "..." --attempted "..." --happened "..." --workaround "..." --proposed-fix "..."`
 Clear: `papercut resolve --stamp <ts> -n "what you fixed"`
+Check: `papercut check` (informational; thin entries do not block resolve)
 Sand:  skill **papercuts** · Long cycle: **papercuts-kaizen**
 Skill missing? `papercut install` (sources: skills/papercuts/ in github.com/TheMikeFactoryMustGrow/papercuts)
 Park for Mike: `papercut needs-mike --stamp <ts> -r "why only Mike can decide"`
@@ -69,8 +70,18 @@ to be retried, a confusing or undocumented setup step, a flaky command, a stale
 cache, a misleading error, a non-obvious gotcha — log it via:
 
 ```bash
-papercut -m <model> "one or two sentences: what you were doing → what got in the way"
+papercut -m <model> \\
+  --goal "<what you were trying to do, and why>" \\
+  --attempted "<tool or command and its inputs; redact secrets>" \\
+  --happened "<the error or the wrong result>" \\
+  --workaround "<what you did instead, or none>" \\
+  --proposed-fix "<the change you think would fix it>"
 ```
+
+Every field is required. If you cannot fill one, use `unknown — <reason>` so
+logging is never blocked. These fields improve later feedback; they do **not**
+gate fixing already-open items. `papercut check` reports thin entries and
+always exits 0. Resolve and sand as usual.
 
 Data lives under **`.agent-papercuts/`** (open list + history), not a root
 `PAPERCUTS.md`, so it does not collide with product files. Do this
@@ -89,7 +100,8 @@ No `papercut` on PATH? One-time machine install (CLI → `~/.local/bin`):
 Cannot install (restricted machine, cloud container)? The format is the tool — append by hand:
 if `.agent-papercuts/open.md` does not exist, start it with the ownership marker line
 `<!-- agent-papercuts:v1 -->` (without it the CLI treats the file as foreign and refuses it later);
-then append `<UTC ISO-8601 stamp> - <model> - <author>`, a blank line, a one-paragraph body
+then append `<UTC ISO-8601 stamp> - <model> - <author>`, a blank line, and the five fields
+(`goal`, `attempted`, `happened`, `workaround`, `proposed_fix`) as `field: value` lines
 (`<model>` and `<author>` are single tokens, no spaces — `jane-doe`, not `Jane Doe`).
 `.agent-papercuts/history.jsonl` gets ONE physical line per entry —
 `{{"event": "logged", "entry_stamp": "<stamp>", "model": "…", "author": "…", "body": "…", "ts": "<stamp>", "repo_root": "<abs git root>"}}`
@@ -109,6 +121,7 @@ ENTRY_RE = re.compile(
 SUBCOMMANDS = {
     "log",
     "list",
+    "check",
     "path",
     "init",
     "install",
@@ -118,6 +131,20 @@ SUBCOMMANDS = {
     "history",
     "needs-mike",
 }
+
+REQUIRED_FIELDS = ("goal", "attempted", "happened", "workaround", "proposed_fix")
+FIELD_LABEL_RE = re.compile(
+    r"^(goal|attempted|happened|workaround|proposed_fix)\s*:\s*(.*)$",
+    re.IGNORECASE,
+)
+INLINE_LABEL_RE = re.compile(
+    r"(goal|attempted|happened|workaround|proposed_fix)\s*:\s*",
+    re.IGNORECASE,
+)
+INCOMPLETE_UNKNOWN_RE = re.compile(
+    r"^unknown(?:\s+(?:—|--|–|-)\s*)?$",
+    re.IGNORECASE,
+)
 
 
 def package_root() -> Path:
@@ -342,6 +369,99 @@ def parse_entries(text: str) -> list[dict]:
     return entries
 
 
+def _collapse(value: str) -> str:
+    return re.sub(r"\s+", " ", value).strip()
+
+
+def parse_fields(body: str) -> dict[str, str]:
+    """Pull goal/attempted/happened/workaround/proposed_fix out of a body."""
+    if not body or not body.strip():
+        return {}
+    parts: dict[str, list[str]] = {}
+    current: str | None = None
+    for raw in body.splitlines():
+        m = FIELD_LABEL_RE.match(raw.strip())
+        if m:
+            current = m.group(1).lower()
+            parts.setdefault(current, [])
+            rest = m.group(2).strip()
+            if rest:
+                parts[current].append(rest)
+        elif current is not None and raw.strip():
+            parts[current].append(raw.strip())
+    fields = {k: _collapse(" ".join(v)) for k, v in parts.items()}
+    if all(fields.get(k) for k in REQUIRED_FIELDS):
+        return fields
+    matches = list(INLINE_LABEL_RE.finditer(body))
+    if not matches:
+        return fields
+    for i, m in enumerate(matches):
+        key = m.group(1).lower()
+        end = matches[i + 1].start() if i + 1 < len(matches) else len(body)
+        value = _collapse(body[m.end() : end])
+        if value and not fields.get(key):
+            fields[key] = value
+    return fields
+
+
+def field_is_filled(value: str | None) -> bool:
+    if value is None:
+        return False
+    text = _collapse(value)
+    if not text:
+        return False
+    if INCOMPLETE_UNKNOWN_RE.fullmatch(text):
+        return False
+    return True
+
+
+def missing_fields(fields: dict[str, str]) -> list[str]:
+    return [k for k in REQUIRED_FIELDS if not field_is_filled(fields.get(k))]
+
+
+def format_body(fields: dict[str, str]) -> str:
+    return "\n".join(f"{k}: {fields[k]}" for k in REQUIRED_FIELDS)
+
+
+def collect_log_fields(args: argparse.Namespace) -> dict[str, str]:
+    message = " ".join(getattr(args, "message", None) or []).strip()
+    # Keep a raw join for labeled single-argument bodies (newlines stay in that argv).
+    raw_parts = getattr(args, "message", None) or []
+    raw = "\n".join(raw_parts) if len(raw_parts) == 1 else message
+    parsed = parse_fields(raw) if raw.strip() else {}
+    fields: dict[str, str] = {}
+    for key in REQUIRED_FIELDS:
+        flag_val = getattr(args, key, None)
+        if flag_val is not None and str(flag_val).strip() != "":
+            fields[key] = _collapse(str(flag_val))
+        elif parsed.get(key):
+            fields[key] = parsed[key]
+    return fields
+
+
+def refuse_missing(missing: list[str]) -> int:
+    names = ", ".join(missing)
+    print(
+        f"error: missing required field(s): {names}\n"
+        "each of goal, attempted, happened, workaround, proposed_fix is required "
+        "(non-blank). If you cannot fill one, use: unknown — <reason>. "
+        "This gates new logs only; existing thin entries can still be resolved.",
+        file=sys.stderr,
+    )
+    return 2
+
+
+def content_key(model: str, author: str, fields: dict[str, str] | None = None, body: str | None = None) -> tuple:
+    """Dedupe key for a retry of the same papercut. Ignores stamp."""
+    if fields is None:
+        fields = parse_fields(body or "")
+    if all(k in fields for k in REQUIRED_FIELDS):
+        values = tuple(_collapse(fields[k]).lower() for k in REQUIRED_FIELDS)
+    else:
+        values = (_collapse(body or "").lower(),)
+    return (model, author, values)
+
+
 def split_header_and_body(text: str) -> tuple[str, str]:
     m = ENTRY_RE.search(text)
     if not m:
@@ -413,11 +533,11 @@ def cmd_path(args: argparse.Namespace) -> int:
 
 
 def cmd_log(args: argparse.Namespace) -> int:
-    message = " ".join(args.message).strip()
-    if not message:
-        print("error: empty message", file=sys.stderr)
-        return 2
-    message = re.sub(r"\s+", " ", message).strip()
+    fields = collect_log_fields(args)
+    missing = missing_fields(fields)
+    if missing:
+        return refuse_missing(missing)
+    body = format_body(fields)
     # Header fields must be single tokens: ENTRY_RE captures model and author
     # as \S+, so an internal space would silently fold this entry into the
     # previous one's body on re-parse. Normalize EVERY source here (flags,
@@ -425,7 +545,6 @@ def cmd_log(args: argparse.Namespace) -> int:
     model = re.sub(r"\s+", "-", (args.model or default_model()).strip()) or "unknown"
     author = re.sub(r"\s+", "-", (args.author or default_author()).strip()) or "agent"
 
-    stamp = utc_now_stamp()
     store = store_for(Path(args.cwd) if args.cwd else None)
     emit_warnings(store)
     try:
@@ -433,7 +552,17 @@ def cmd_log(args: argparse.Namespace) -> int:
     except SystemExit as e:
         print(e, file=sys.stderr)
         return 1
-    entry = f"{stamp} - {model} - {author}\n\n{message}\n\n"
+    existing = []
+    if store.open_path.exists():
+        existing = parse_entries(store.open_path.read_text(encoding="utf-8"))
+    key = content_key(model, author, fields=fields)
+    for e in existing:
+        if content_key(e["model"], e["author"], body=e["body"]) == key:
+            print(f"already logged → {store.open_path}")
+            print(f"  {e['stamp']} - {e['model']} - {e['author']}")
+            return 0
+    stamp = utc_now_stamp()
+    entry = f"{stamp} - {model} - {author}\n\n{body}\n\n"
     with store.open_path.open("a", encoding="utf-8") as f:
         f.write(entry)
     hist = append_history(
@@ -444,13 +573,52 @@ def cmd_log(args: argparse.Namespace) -> int:
             "entry_stamp": stamp,
             "model": model,
             "author": author,
-            "body": message,
+            "body": body,
         },
     )
     print(f"logged → {store.open_path}")
     print(f"  history → {hist}")
     print(f"  {stamp} - {model} - {author}")
-    print(f"  {message}")
+    print(f"  {body}")
+    return 0
+
+
+def cmd_check(args: argparse.Namespace) -> int:
+    """Report open entries missing required fields. Informational: always exit 0."""
+    store = store_for(Path(args.cwd) if args.cwd else None)
+    emit_warnings(store)
+    path = store.open_path
+    if not path.exists():
+        print(f"(no open log at {path})", file=sys.stderr)
+        return 0
+    if not is_owned_open_file(path):
+        print(
+            f"error: {path} is not an agent-papercuts log; refusing to check",
+            file=sys.stderr,
+        )
+        return 0
+    entries = parse_entries(path.read_text(encoding="utf-8"))
+    if not entries:
+        print(f"(empty log: {path})")
+        return 0
+    thin: list[tuple[dict, list[str]]] = []
+    for e in entries:
+        missing = missing_fields(parse_fields(e["body"]))
+        if missing:
+            thin.append((e, missing))
+    print(f"{path}  ({len(entries)} open, {len(thin)} thin)\n")
+    for e, missing in thin:
+        print(
+            f"THIN  {e['stamp']}  [{e['model']}]  {e['author']}  "
+            f"missing: {', '.join(missing)}"
+        )
+    if thin:
+        print(
+            f"\n({len(thin)} thin; grandfathered — check is informational "
+            "and does not block resolve or sanding)"
+        )
+    else:
+        print("all complete (0 thin)")
     return 0
 
 
@@ -1018,10 +1186,17 @@ def build_parser() -> argparse.ArgumentParser:
     log_p = sub.add_parser("log", help="append an open-list entry + history")
     log_p.add_argument("-m", "--model", default=None)
     log_p.add_argument("-a", "--author", default=None)
-    log_p.add_argument("message", nargs="+")
+    log_p.add_argument("--goal", default=None, help="what you were trying to do, and why")
+    log_p.add_argument("--attempted", default=None, help="tool or command and its inputs (redact secrets)")
+    log_p.add_argument("--happened", default=None, help="the error or the wrong result")
+    log_p.add_argument("--workaround", default=None, help="what you did instead, or none")
+    log_p.add_argument("--proposed-fix", dest="proposed_fix", default=None, help="the change you think would fix it")
+    log_p.add_argument("message", nargs="*", help="optional labeled body (goal:/attempted:/...)")
 
     list_p = sub.add_parser("list", help="list open entries (newest first)")
     list_p.add_argument("-n", type=int, default=None)
+
+    sub.add_parser("check", help="report open entries missing required fields (informational; always exits 0)")
 
     res = sub.add_parser("resolve", help="clear open entries after a fix; append history")
     res.add_argument("-n", "--note", required=True, help="one-line preventive fix")
@@ -1096,6 +1271,7 @@ def main(argv: list[str] | None = None) -> int:
     dispatch = {
         "log": cmd_log,
         "list": cmd_list,
+        "check": cmd_check,
         "path": cmd_path,
         "init": cmd_init,
         "install": cmd_install,

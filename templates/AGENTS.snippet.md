@@ -6,8 +6,18 @@ to be retried, a confusing or undocumented setup step, a flaky command, a stale
 cache, a misleading error, a non-obvious gotcha — log it via:
 
 ```bash
-papercut -m <model> "one or two sentences: what you were doing → what got in the way"
+papercut -m <model> \
+  --goal "<what you were trying to do, and why>" \
+  --attempted "<tool or command and its inputs; redact secrets>" \
+  --happened "<the error or the wrong result>" \
+  --workaround "<what you did instead, or none>" \
+  --proposed-fix "<the change you think would fix it>"
 ```
+
+Every field is required. If you cannot fill one, use `unknown — <reason>` so
+logging is never blocked. These fields improve later feedback; they do **not**
+gate fixing already-open items. `papercut check` reports thin entries and
+always exits 0. Resolve and sand as usual.
 
 Data lives under **`.agent-papercuts/`** (open list + history), not a root
 `PAPERCUTS.md`, so it does not collide with product files. Do this
@@ -26,7 +36,8 @@ No `papercut` on PATH? One-time machine install (CLI → `~/.local/bin`):
 Cannot install (restricted machine, cloud container)? The format is the tool — append by hand:
 if `.agent-papercuts/open.md` does not exist, start it with the ownership marker line
 `<!-- agent-papercuts:v1 -->` (without it the CLI treats the file as foreign and refuses it later);
-then append `<UTC ISO-8601 stamp> - <model> - <author>`, a blank line, a one-paragraph body
+then append `<UTC ISO-8601 stamp> - <model> - <author>`, a blank line, and the five fields
+(`goal`, `attempted`, `happened`, `workaround`, `proposed_fix`) as `field: value` lines
 (`<model>` and `<author>` are single tokens, no spaces — `jane-doe`, not `Jane Doe`).
 `.agent-papercuts/history.jsonl` gets ONE physical line per entry —
 `{"event": "logged", "entry_stamp": "<stamp>", "model": "…", "author": "…", "body": "…", "ts": "<stamp>", "repo_root": "<abs git root>"}`
