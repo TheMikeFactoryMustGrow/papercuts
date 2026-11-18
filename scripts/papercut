@@ -423,22 +423,22 @@ def _parse_inline_fields(body: str) -> dict[str, str]:
 def parse_fields(body: str) -> dict[str, str]:
     """Pull required and optional field labels out of a body.
 
-    Line-start labels win when they yield every required field (so a value that
-    merely mentions "workaround:" mid-sentence is left alone). Otherwise the body
-    is re-read splitting on labels anywhere in the text, so a one-line labeled
-    body does not stuff every label into `goal`. Whichever reading leaves fewer
-    required fields missing is returned. Annotation lines are never field text.
+    A multi-line body is read by line-start labels only, and that reading is
+    authoritative: text inside one value that happens to mention another label
+    ("happened: timeout after ideal_outcome: was never printed") is never split
+    into a field, so a missing field stays missing. Splitting on labels anywhere
+    in the text is used only for a genuinely one-line body (a single argument, or
+    several arguments joined by spaces), where no line structure exists.
+    Annotation lines are never field text.
     """
     body = strip_annotations(body)
     if not body:
         return {}
     by_line = _parse_line_fields(body)
-    if not missing_fields(by_line):
+    if len([ln for ln in body.splitlines() if ln.strip()]) > 1:
         return by_line
     by_inline = _parse_inline_fields(body)
-    if len(missing_fields(by_inline)) < len(missing_fields(by_line)):
-        return by_inline
-    return by_line
+    return by_inline if by_inline else by_line
 
 
 def searchable_text(body: str) -> str:

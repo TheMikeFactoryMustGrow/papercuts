@@ -424,11 +424,58 @@ class CliTests(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stderr + r.stdout)
         self.assert_clean_fields()
 
-    def test_mixed_line_and_inline_labeled_body(self) -> None:
+    def test_mixed_line_and_inline_labeled_body_is_refused_not_guessed(self) -> None:
+        # Line-start labels are authoritative in a multi-line body; labels inside a
+        # value are not split out, so attempted/workaround stay missing.
         body = "goal: G the goal attempted: A did a thing\nhappened: H it broke workaround: W used another way\nideal_outcome: I it just works"
+        before, hist = self.open_text(), self.history_text()
+        r = run(self.repo, "log", "-m", "m", "-a", "a", body)
+        self.assertEqual(r.returncode, 2, r.stdout + r.stderr)
+        head = r.stderr.split("usage:")[0]
+        self.assertIn("attempted", head)
+        self.assertIn("workaround", head)
+        self.assertEqual(self.open_text(), before)
+        self.assertEqual(self.history_text(), hist)
+
+    def assert_multiline_refused(self, lines: list[str], missing: str, fabricated: str) -> None:
+        before, hist = self.open_text(), self.history_text()
+        r = run(self.repo, "log", "-m", "m", "-a", "a", "\n".join(lines))
+        self.assertEqual(r.returncode, 2, r.stdout + r.stderr)
+        head = r.stderr.split("usage:")[0]
+        self.assertIn(missing, head)
+        self.assertEqual(self.open_text(), before, "nothing may be written")
+        self.assertEqual(self.history_text(), hist, "nothing may be written to history")
+        self.assertNotIn(fabricated, self.open_text())
+
+    def test_multiline_missing_ideal_outcome_is_not_fabricated_from_a_value(self) -> None:
+        self.assert_multiline_refused(
+            [
+                "goal: G", "attempted: A",
+                "happened: timeout after ideal_outcome: was never printed",
+                "workaround: W",
+            ],
+            "ideal_outcome", "was never printed",
+        )
+
+    def test_multiline_missing_workaround_is_not_fabricated_from_a_value(self) -> None:
+        self.assert_multiline_refused(
+            [
+                "goal: G", "attempted: A",
+                "happened: it failed after workaround: none was found",
+                "ideal_outcome: I",
+            ],
+            "workaround", "none was found",
+        )
+
+    def test_multiline_value_with_label_and_all_fields_is_unchanged(self) -> None:
+        body = "\n".join(
+            ["goal: G", "attempted: A", "happened: timeout after ideal_outcome: was never printed",
+             "workaround: W", "ideal_outcome: I"]
+        )
         r = run(self.repo, "log", "-m", "m", "-a", "a", body)
         self.assertEqual(r.returncode, 0, r.stderr + r.stdout)
-        self.assert_clean_fields()
+        self.assertIn("happened: timeout after ideal_outcome: was never printed", self.open_text())
+        self.assertEqual(self.stored_fields()["ideal_outcome"], "I")
 
     def test_one_line_and_newline_bodies_dedupe_to_one_entry(self) -> None:
         self.assertEqual(run(self.repo, "log", "-m", "m", "-a", "a", self.ONE_LINE).returncode, 0)

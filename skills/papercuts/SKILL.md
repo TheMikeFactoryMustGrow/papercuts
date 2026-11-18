@@ -179,7 +179,8 @@ and names it. If you cannot fill one, use `unknown — <reason>` so logging is
 never blocked. A retry of the same papercut is idempotent (no duplicate), even
 after the entry was parked with `needs-mike`; a retry that adds or changes
 `suggested_fix` is a different papercut. A labeled body works newline-separated
-or on one line. `--contains` (resolve / needs-mike) ignores field labels and the
+(labels at line starts are authoritative; a label mentioned inside a value is never
+split out, so a missing field is refused and named) or on one line. `--contains` (resolve / needs-mike) ignores field labels and the
 needs-Mike marker, and refuses to act on more than one match without `--all`.
 
 This format improves future feedback. It does **not** gate fixing already-open
