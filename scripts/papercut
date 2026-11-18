@@ -8,7 +8,7 @@ Open list: delete-on-fix via `papercut resolve`.
 Shadow ledger: append-only history.jsonl for papercuts-kaizen.
 
 Usage:
-  papercut log --goal "..." --attempted "..." --happened "..." --workaround "..." --proposed-fix "..."
+  papercut log --goal "..." --attempted "..." --happened "..." --workaround "..." --ideal-outcome "..."
   papercut log|list|check|resolve|history|path|init|status|enable|install
 """
 
@@ -51,7 +51,7 @@ This file is **agent tooling** (coding-agent friction), not product content.
 If you are building a game/app about papercuts, your product files live elsewhere;
 this tool only writes under `.agent-papercuts/` unless a legacy owned log exists.
 
-Log:   `papercut --goal "..." --attempted "..." --happened "..." --workaround "..." --proposed-fix "..."`
+Log:   `papercut --goal "..." --attempted "..." --happened "..." --workaround "..." --ideal-outcome "..."`
 Clear: `papercut resolve --stamp <ts> -n "what you fixed"`
 Check: `papercut check` (informational; thin entries do not block resolve)
 Sand:  skill **papercuts** · Long cycle: **papercuts-kaizen**
@@ -75,13 +75,17 @@ papercut -m <model> \\
   --attempted "<tool or command and its inputs; redact secrets>" \\
   --happened "<the error or the wrong result>" \\
   --workaround "<what you did instead, or none>" \\
-  --proposed-fix "<the change you think would fix it>"
+  --ideal-outcome "<the exact output or result you wanted back, and what you needed it for>"
 ```
 
-Every field is required. If you cannot fill one, use `unknown — <reason>` so
-logging is never blocked. These fields improve later feedback; they do **not**
-gate fixing already-open items. `papercut check` reports thin entries and
-always exits 0. Resolve and sand as usual.
+Describe the target state (`ideal_outcome`) so a later fixer can work backwards
+from it, rather than starting with "fix this, fix that." `goal`, `attempted`,
+`happened`, `workaround`, and `ideal_outcome` are required. `suggested_fix` is
+optional (`--suggested-fix`) and never required. If you cannot fill a required
+field, use `unknown — <reason>` so logging is never blocked. These fields
+improve later feedback; they do **not** gate fixing already-open items.
+`papercut check` reports thin entries and always exits 0. Resolve and sand as
+usual. Entries that already have `proposed_fix` stay valid as history.
 
 Data lives under **`.agent-papercuts/`** (open list + history), not a root
 `PAPERCUTS.md`, so it does not collide with product files. Do this
@@ -100,8 +104,9 @@ No `papercut` on PATH? One-time machine install (CLI → `~/.local/bin`):
 Cannot install (restricted machine, cloud container)? The format is the tool — append by hand:
 if `.agent-papercuts/open.md` does not exist, start it with the ownership marker line
 `<!-- agent-papercuts:v1 -->` (without it the CLI treats the file as foreign and refuses it later);
-then append `<UTC ISO-8601 stamp> - <model> - <author>`, a blank line, and the five fields
-(`goal`, `attempted`, `happened`, `workaround`, `proposed_fix`) as `field: value` lines
+then append `<UTC ISO-8601 stamp> - <model> - <author>`, a blank line, and the five required fields
+(`goal`, `attempted`, `happened`, `workaround`, `ideal_outcome`) as `field: value` lines,
+optionally plus `suggested_fix`
 (`<model>` and `<author>` are single tokens, no spaces — `jane-doe`, not `Jane Doe`).
 `.agent-papercuts/history.jsonl` gets ONE physical line per entry —
 `{{"event": "logged", "entry_stamp": "<stamp>", "model": "…", "author": "…", "body": "…", "ts": "<stamp>", "repo_root": "<abs git root>"}}`
@@ -132,13 +137,15 @@ SUBCOMMANDS = {
     "needs-mike",
 }
 
-REQUIRED_FIELDS = ("goal", "attempted", "happened", "workaround", "proposed_fix")
+REQUIRED_FIELDS = ("goal", "attempted", "happened", "workaround", "ideal_outcome")
+OPTIONAL_FIELDS = ("suggested_fix",)
+# proposed_fix is parsed so older structured entries stay intact as history.
 FIELD_LABEL_RE = re.compile(
-    r"^(goal|attempted|happened|workaround|proposed_fix)\s*:\s*(.*)$",
+    r"^(goal|attempted|happened|workaround|ideal_outcome|suggested_fix|proposed_fix)\s*:\s*(.*)$",
     re.IGNORECASE,
 )
 INLINE_LABEL_RE = re.compile(
-    r"(goal|attempted|happened|workaround|proposed_fix)\s*:\s*",
+    r"(goal|attempted|happened|workaround|ideal_outcome|suggested_fix|proposed_fix)\s*:\s*",
     re.IGNORECASE,
 )
 INCOMPLETE_UNKNOWN_RE = re.compile(
@@ -374,7 +381,7 @@ def _collapse(value: str) -> str:
 
 
 def parse_fields(body: str) -> dict[str, str]:
-    """Pull goal/attempted/happened/workaround/proposed_fix out of a body."""
+    """Pull required and optional field labels out of a body."""
     if not body or not body.strip():
         return {}
     parts: dict[str, list[str]] = {}
@@ -420,7 +427,10 @@ def missing_fields(fields: dict[str, str]) -> list[str]:
 
 
 def format_body(fields: dict[str, str]) -> str:
-    return "\n".join(f"{k}: {fields[k]}" for k in REQUIRED_FIELDS)
+    lines = [f"{k}: {fields[k]}" for k in REQUIRED_FIELDS]
+    if field_is_filled(fields.get("suggested_fix")):
+        lines.append(f"suggested_fix: {fields['suggested_fix']}")
+    return "\n".join(lines)
 
 
 def collect_log_fields(args: argparse.Namespace) -> dict[str, str]:
@@ -430,7 +440,7 @@ def collect_log_fields(args: argparse.Namespace) -> dict[str, str]:
     raw = "\n".join(raw_parts) if len(raw_parts) == 1 else message
     parsed = parse_fields(raw) if raw.strip() else {}
     fields: dict[str, str] = {}
-    for key in REQUIRED_FIELDS:
+    for key in REQUIRED_FIELDS + OPTIONAL_FIELDS:
         flag_val = getattr(args, key, None)
         if flag_val is not None and str(flag_val).strip() != "":
             fields[key] = _collapse(str(flag_val))
@@ -443,7 +453,7 @@ def refuse_missing(missing: list[str]) -> int:
     names = ", ".join(missing)
     print(
         f"error: missing required field(s): {names}\n"
-        "each of goal, attempted, happened, workaround, proposed_fix is required "
+        "each of goal, attempted, happened, workaround, ideal_outcome is required "
         "(non-blank). If you cannot fill one, use: unknown — <reason>. "
         "This gates new logs only; existing thin entries can still be resolved.",
         file=sys.stderr,
@@ -1190,7 +1200,8 @@ def build_parser() -> argparse.ArgumentParser:
     log_p.add_argument("--attempted", default=None, help="tool or command and its inputs (redact secrets)")
     log_p.add_argument("--happened", default=None, help="the error or the wrong result")
     log_p.add_argument("--workaround", default=None, help="what you did instead, or none")
-    log_p.add_argument("--proposed-fix", dest="proposed_fix", default=None, help="the change you think would fix it")
+    log_p.add_argument("--ideal-outcome", dest="ideal_outcome", default=None, help="the exact output or result you wanted back, and what you needed it for")
+    log_p.add_argument("--suggested-fix", dest="suggested_fix", default=None, help="optional; a possible change, never required")
     log_p.add_argument("message", nargs="*", help="optional labeled body (goal:/attempted:/...)")
 
     list_p = sub.add_parser("list", help="list open entries (newest first)")

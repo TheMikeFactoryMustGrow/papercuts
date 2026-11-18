@@ -3,6 +3,9 @@
 
 The new fields improve future feedback. They gate *new* logs only.
 `papercut check` is informational (exit 0) and is not a gate on resolve or sanding.
+
+Required: goal, attempted, happened, workaround, ideal_outcome.
+Optional: suggested_fix. Legacy proposed_fix entries stay valid as history.
 """
 
 from __future__ import annotations
@@ -16,14 +19,22 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 PAPERCUT = ROOT / "scripts" / "papercut"
 
-REQUIRED = ("goal", "attempted", "happened", "workaround", "proposed_fix")
+REQUIRED = ("goal", "attempted", "happened", "workaround", "ideal_outcome")
+FLAGS = {
+    "goal": "--goal",
+    "attempted": "--attempted",
+    "happened": "--happened",
+    "workaround": "--workaround",
+    "ideal_outcome": "--ideal-outcome",
+    "suggested_fix": "--suggested-fix",
+}
 
 FULL = {
     "goal": "Install the CLI so the next agent can log friction.",
     "attempted": "papercut install --grok",
     "happened": "command not found: papercut because ~/.local/bin was not on PATH.",
     "workaround": "called scripts/papercut directly",
-    "proposed_fix": "Have install print a PATH check and fail if the shim is not reachable.",
+    "ideal_outcome": "install exits 0 and `papercut status` works from a new shell, so the next agent can log without a hardcoded script path.",
 }
 
 LEGACY = (
@@ -31,6 +42,18 @@ LEGACY = (
     "2026-08-06T03:27:18.616Z - m1 - a1\n"
     "\n"
     "First: the SIGPIPE guard bug.\n"
+    "\n"
+)
+
+LEGACY_PROPOSED_FIX = (
+    "\n"
+    "2026-11-18T13:20:00.000Z - test-model - test-bot\n"
+    "\n"
+    "goal: Install the CLI so the next agent can log friction.\n"
+    "attempted: papercut install --grok\n"
+    "happened: command not found: papercut because ~/.local/bin was not on PATH.\n"
+    "workaround: called scripts/papercut directly\n"
+    "proposed_fix: Have install print a PATH check and fail if the shim is not reachable.\n"
     "\n"
 )
 
@@ -47,11 +70,10 @@ def run(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
 
 def log_args(fields: dict[str, str | None], model: str = "test-model", author: str = "test-bot") -> list[str]:
     args = ["log", "-m", model, "-a", author]
-    for key in REQUIRED:
+    for key, flag in FLAGS.items():
         val = fields.get(key)
         if val is None:
             continue
-        flag = "--proposed-fix" if key == "proposed_fix" else f"--{key}"
         args.extend([flag, val])
     return args
 
@@ -76,9 +98,6 @@ class CliTests(unittest.TestCase):
 
     def logged_events(self) -> list[str]:
         return [ln for ln in self.history_text().splitlines() if '"event": "logged"' in ln or '"event":"logged"' in ln]
-
-    def entry_count(self) -> int:
-        return self.open_text().count(" - ")
 
     def test_missing_field_is_rejected_and_named(self) -> None:
         for key in REQUIRED:
@@ -112,9 +131,11 @@ class CliTests(unittest.TestCase):
         self.assertIn("missing", err)
         for key in REQUIRED:
             self.assertIn(key, err)
+        self.assertNotIn("proposed_fix", err)
+        self.assertNotIn("suggested_fix", err)
         self.assertEqual(self.open_text(), before)
 
-    def test_complete_log_is_accepted(self) -> None:
+    def test_complete_log_is_accepted_without_suggested_fix(self) -> None:
         r = run(self.repo, *log_args(dict(FULL)))
         self.assertEqual(r.returncode, 0, r.stderr + r.stdout)
         text = self.open_text()
@@ -123,12 +144,30 @@ class CliTests(unittest.TestCase):
         self.assertIn("attempted:", text)
         self.assertIn("happened:", text)
         self.assertIn("workaround:", text)
-        self.assertIn("proposed_fix:", text)
-        self.assertIn(FULL["proposed_fix"], text)
+        self.assertIn("ideal_outcome:", text)
+        self.assertIn(FULL["ideal_outcome"], text)
+        self.assertNotIn("proposed_fix:", text)
+        self.assertNotIn("suggested_fix:", text)
         self.assertEqual(len(self.logged_events()), 1)
         lst = run(self.repo, "list")
         self.assertEqual(lst.returncode, 0, lst.stderr)
         self.assertIn("(1 total", lst.stdout)
+
+    def test_optional_suggested_fix_is_recorded_when_present(self) -> None:
+        fields = dict(FULL)
+        fields["suggested_fix"] = "Have install print a PATH check and fail if the shim is not reachable."
+        r = run(self.repo, *log_args(fields))
+        self.assertEqual(r.returncode, 0, r.stderr + r.stdout)
+        text = self.open_text()
+        self.assertIn("ideal_outcome:", text)
+        self.assertIn("suggested_fix: Have install print a PATH check and fail if the shim is not reachable.", text)
+
+    def test_omitting_suggested_fix_is_not_a_missing_field(self) -> None:
+        r = run(self.repo, *log_args(dict(FULL)))
+        self.assertEqual(r.returncode, 0, r.stderr + r.stdout)
+        err = (r.stderr + r.stdout).lower()
+        self.assertNotIn("missing", err)
+        self.assertNotIn("suggested_fix", err)
 
     def test_workaround_none_is_accepted(self) -> None:
         fields = dict(FULL)
@@ -163,13 +202,14 @@ class CliTests(unittest.TestCase):
                 f"attempted: {FULL['attempted']}",
                 f"happened: {FULL['happened']}",
                 f"workaround: {FULL['workaround']}",
-                f"proposed_fix: {FULL['proposed_fix']}",
+                f"ideal_outcome: {FULL['ideal_outcome']}",
             ]
         )
         r = run(self.repo, "log", "-m", "test-model", "-a", "test-bot", body)
         self.assertEqual(r.returncode, 0, r.stderr + r.stdout)
         self.assertIn("goal:", self.open_text())
-        self.assertIn(FULL["happened"], self.open_text())
+        self.assertIn("ideal_outcome:", self.open_text())
+        self.assertIn(FULL["ideal_outcome"], self.open_text())
 
     def test_dedupe_retry_does_not_duplicate(self) -> None:
         first = run(self.repo, *log_args(dict(FULL)))
@@ -234,6 +274,33 @@ class CliTests(unittest.TestCase):
         lst2 = run(self.repo, "list")
         self.assertIn("empty log", lst2.stdout)
         self.assertNotIn("SIGPIPE", self.open_text())
+
+    def test_legacy_proposed_fix_stays_valid_as_history(self) -> None:
+        open_path = self.repo / ".agent-papercuts" / "open.md"
+        open_path.write_text(self.open_text() + LEGACY_PROPOSED_FIX, encoding="utf-8")
+        before = open_path.read_text(encoding="utf-8")
+        self.assertIn("proposed_fix:", before)
+        lst = run(self.repo, "list")
+        self.assertEqual(lst.returncode, 0, lst.stderr)
+        self.assertIn("proposed_fix", lst.stdout)
+        self.assertIn("(1 total", lst.stdout)
+        checked = run(self.repo, "check")
+        self.assertEqual(checked.returncode, 0, checked.stderr + checked.stdout)
+        out = (checked.stdout + checked.stderr).lower()
+        self.assertIn("ideal_outcome", out)
+        self.assertTrue("thin" in out or "missing" in out, checked.stdout + checked.stderr)
+        self.assertEqual(open_path.read_text(encoding="utf-8"), before, "check must not rewrite history")
+        resolved = run(
+            self.repo,
+            "resolve",
+            "--stamp",
+            "2026-11-18T13:20:00.000Z",
+            "-n",
+            "Legacy proposed_fix entries still clear; the fixer works backwards from ideal_outcome going forward.",
+        )
+        self.assertEqual(resolved.returncode, 0, resolved.stderr + resolved.stdout)
+        self.assertIn("empty log", run(self.repo, "list").stdout)
+        self.assertIn("proposed_fix", self.history_text())
 
 
 if __name__ == "__main__":

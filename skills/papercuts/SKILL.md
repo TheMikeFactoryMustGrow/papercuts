@@ -152,7 +152,8 @@ papercut log -m <model-tag> -a <author> \
   --attempted "<tool or command and its inputs; redact secrets>" \
   --happened "<the error or the wrong result>" \
   --workaround "<what you did instead, or none>" \
-  --proposed-fix "<the change you think would fix it>"
+  --ideal-outcome "<the exact output or result you wanted back, and what you needed it for>" \
+  # --suggested-fix "<optional; never required>"
 papercut list
 papercut list -n 10
 papercut check                               # report thin open entries (informational; always exits 0)
@@ -168,15 +169,20 @@ papercut install                             # machine: papercuts + papercuts-ka
 ```
 
 **Rich context (new logs only).** Every new papercut must carry `goal`,
-`attempted`, `happened`, `workaround`, and `proposed_fix` — the same kind of
-context a PR template asks for. The CLI refuses a blank or missing field and
-names it. If you cannot fill one, use `unknown — <reason>` so logging is never
-blocked. A retry of the same papercut is idempotent (no duplicate).
+`attempted`, `happened`, `workaround`, and `ideal_outcome` — the same kind of
+context a PR template asks for. `ideal_outcome` is the exact output or result
+the bot wanted back, and what it needed it for. Describe that target state so
+a later fixer can start with the goal and work backwards, instead of
+prescribing "fix this, fix that" and running in circles. `suggested_fix` is
+optional and never required. The CLI refuses a blank or missing required field
+and names it. If you cannot fill one, use `unknown — <reason>` so logging is
+never blocked. A retry of the same papercut is idempotent (no duplicate).
 
 This format improves future feedback. It does **not** gate fixing already-open
-items. Existing thin entries are grandfathered: leave them as they are,
-`papercut check` reports them and always exits 0, and `papercut resolve` still
-clears them. The queue still gets sanded.
+items. Existing thin entries are grandfathered: leave them as they are
+(including older entries that have `proposed_fix`), `papercut check` reports
+them and always exits 0, and `papercut resolve` still clears them. The queue
+still gets sanded.
 
 **Retention:** open list is **delete-on-fix** via `resolve`. History is **append-only**.
 Never hand-delete entries from `PAPERCUTS.md` — that skips the ledger and starves kaizen.
@@ -244,7 +250,7 @@ Keep working the user’s task. Papercuts are non-blocking.
    - No: pure “I should have read the file,” pure experiment noise → **do not log**  
    - Ambiguous → prefer log (later fix pass can skip)  
 3. **L2** — log immediately with all five fields (don’t batch until end):
-   `papercut -m <model> --goal "…" --attempted "…" --happened "…" --workaround "…" --proposed-fix "…"`.
+   `papercut -m <model> --goal "…" --attempted "…" --happened "…" --workaround "…" --ideal-outcome "…"`. Optional: `--suggested-fix "…"`.
    If a field is unknown, use `unknown — <reason>`.  
 4. Continue the task.
 

@@ -152,7 +152,7 @@ papercut status    # expect project_enabled=true
 ```markdown
 <!-- papercuts:begin -->
 ## Log papercuts
-… papercut -m <model> --goal "…" --attempted "…" --happened "…" --workaround "…" --proposed-fix "…" …
+… papercut -m <model> --goal "…" --attempted "…" --happened "…" --workaround "…" --ideal-outcome "…" …
 <!-- papercuts:end -->
 ```
 
@@ -200,16 +200,22 @@ papercut -m claude-opus \
   --attempted "vitest with a root-relative fixture path" \
   --happened "cwd is apps/web so the fixture path misses." \
   --workaround "cd to repo root before the test" \
-  --proposed-fix "Document the apps/web test cwd in AGENTS.md"
+  --ideal-outcome "vitest finds the fixture from the repo root so the suite can finish without a manual cd"
 # also appends event=logged to .agent-papercuts/history.jsonl
+# optional: --suggested-fix "Document the apps/web test cwd in AGENTS.md"
 ```
 
 Every new log needs those five fields (what you were trying to do and why, what
-you ran, what happened, the workaround, and a proposed fix). If a field is
+you ran, what happened, the workaround, and the ideal outcome — the exact
+output or result you wanted back, and what you needed it for). Describe that
+target state so a later fixer can start with the goal and work backwards,
+instead of prescribing "fix this, fix that" and running in circles.
+`suggested_fix` is optional and never required. If a required field is
 unknown, use `unknown — <reason>` so logging is never blocked. The format
 improves later feedback; it does **not** gate fixing already-open items.
 `papercut check` reports thin entries and always exits 0. Existing open items
-are left as they are, and `papercut resolve` still clears them.
+are left as they are (including older entries that have `proposed_fix`), and
+`papercut resolve` still clears them.
 
 **Inspect:**
 
