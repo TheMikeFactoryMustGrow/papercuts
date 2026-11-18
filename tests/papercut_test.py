@@ -302,6 +302,243 @@ class CliTests(unittest.TestCase):
         self.assertIn("empty log", run(self.repo, "list").stdout)
         self.assertIn("proposed_fix", self.history_text())
 
+    # --- Oracle review of e99c709: --contains, one-line bodies, idempotency, usage ---
+
+    def log_two_unrelated(self) -> None:
+        a = dict(
+            goal="Install the CLI so the next agent can log friction.",
+            attempted="papercut install --grok",
+            happened="command not found: papercut because ~/.local/bin was not on PATH.",
+            workaround="called scripts/papercut directly",
+            ideal_outcome="install exits 0 and `papercut status` runs from a new shell, so the next agent can log without a hardcoded script path.",
+        )
+        b = dict(FULL)
+        b.update(
+            goal="Render the weekly report as a PDF.",
+            attempted="pandoc report.md -o report.pdf",
+            happened="pandoc: xelatex not found.",
+            workaround="used the HTML export",
+            ideal_outcome="pandoc produces report.pdf without extra installs, so the report can be attached.",
+        )
+        self.assertEqual(run(self.repo, *log_args(a)).returncode, 0)
+        self.assertEqual(run(self.repo, *log_args(b)).returncode, 0)
+
+    def test_resolve_contains_ignores_field_labels(self) -> None:
+        self.log_two_unrelated()
+        for needle in ("work", "workaround", "goal", "happened", "ideal", "attempted", "ideal_outcome"):
+            with self.subTest(needle=needle):
+                before = self.open_text()
+                r = run(self.repo, "resolve", "--contains", needle, "-n", "test")
+                self.assertNotEqual(r.returncode, 0, r.stdout + r.stderr)
+                self.assertIn("no open entries matching", r.stderr)
+                self.assertEqual(self.open_text(), before)
+        self.assertIn("(2 total", run(self.repo, "list").stdout)
+
+    def test_resolve_contains_matches_field_values_and_is_selective(self) -> None:
+        self.log_two_unrelated()
+        r = run(self.repo, "resolve", "--contains", "xelatex", "-n", "documented the install")
+        self.assertEqual(r.returncode, 0, r.stderr + r.stdout)
+        self.assertIn("(1 total", run(self.repo, "list").stdout)
+        self.assertNotIn("xelatex", self.open_text())
+        self.assertIn("papercut install --grok", self.open_text())
+
+    def test_resolve_contains_multi_match_needs_all(self) -> None:
+        self.log_two_unrelated()
+        before = self.open_text()
+        r = run(self.repo, "resolve", "--contains", "can", "-n", "x")  # both values say "can"
+        self.assertEqual(r.returncode, 2, r.stdout + r.stderr)
+        self.assertIn("--all", r.stderr)
+        self.assertEqual(self.open_text(), before)
+        ok = run(self.repo, "resolve", "--contains", "can", "--all", "-n", "x")
+        self.assertEqual(ok.returncode, 0, ok.stderr + ok.stdout)
+        self.assertIn("empty log", run(self.repo, "list").stdout)
+
+    def test_needs_mike_contains_ignores_field_labels(self) -> None:
+        self.log_two_unrelated()
+        before = self.open_text()
+        r = run(self.repo, "needs-mike", "--contains", "work", "-r", "policy call")
+        self.assertNotEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(self.open_text(), before)
+        self.assertNotIn("needs-Mike", self.open_text())
+        ok = run(self.repo, "needs-mike", "--contains", "xelatex", "-r", "policy call", "--date", "2026-11-18")
+        self.assertEqual(ok.returncode, 0, ok.stderr + ok.stdout)
+        self.assertEqual(self.open_text().count("> needs-Mike"), 1)
+
+    def test_needs_mike_contains_multi_match_needs_all(self) -> None:
+        self.log_two_unrelated()
+        r = run(self.repo, "needs-mike", "--contains", "can", "-r", "x")
+        self.assertEqual(r.returncode, 2, r.stdout + r.stderr)
+        self.assertNotIn("needs-Mike", self.open_text())
+        ok = run(self.repo, "needs-mike", "--contains", "can", "--all", "-r", "x")
+        self.assertEqual(ok.returncode, 0, ok.stderr + ok.stdout)
+        self.assertEqual(self.open_text().count("> needs-Mike"), 2)
+
+    def test_contains_does_not_match_needs_mike_marker(self) -> None:
+        self.log_two_unrelated()
+        self.assertEqual(run(self.repo, "needs-mike", "--stamp", self.first_stamp(), "-r", "policy call").returncode, 0)
+        r = run(self.repo, "resolve", "--contains", "needs-mike", "-n", "x")
+        self.assertNotEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("(2 total", run(self.repo, "list").stdout)
+
+    def first_stamp(self) -> str:
+        import re
+
+        return re.findall(r"^(\d{4}-\d{2}-\d{2}T\S+) - ", self.open_text(), re.MULTILINE)[0]
+
+    def test_legacy_free_text_contains_still_matches(self) -> None:
+        open_path = self.repo / ".agent-papercuts" / "open.md"
+        open_path.write_text(self.open_text() + LEGACY, encoding="utf-8")
+        r = run(self.repo, "resolve", "--contains", "sigpipe", "-n", "guard fixed")
+        self.assertEqual(r.returncode, 0, r.stderr + r.stdout)
+        self.assertIn("empty log", run(self.repo, "list").stdout)
+
+    def stored_fields(self) -> dict[str, str]:
+        out: dict[str, str] = {}
+        for ln in self.open_text().splitlines():
+            for key in REQUIRED + ("suggested_fix",):
+                if ln.startswith(key + ":"):
+                    self.assertNotIn(key, out, f"{key} stored twice:\n{self.open_text()}")
+                    out[key] = ln[len(key) + 1 :].strip()
+        return out
+
+    def assert_clean_fields(self) -> None:
+        stored = self.stored_fields()
+        self.assertEqual(stored["goal"], "G the goal")
+        self.assertEqual(stored["attempted"], "A did a thing")
+        self.assertEqual(stored["happened"], "H it broke")
+        self.assertEqual(stored["workaround"], "W used another way")
+        self.assertEqual(stored["ideal_outcome"], "I it just works")
+        self.assertEqual(self.open_text().count("goal:"), 1)
+
+    ONE_LINE = "goal: G the goal attempted: A did a thing happened: H it broke workaround: W used another way ideal_outcome: I it just works"
+
+    def test_one_line_labeled_body_single_argument(self) -> None:
+        r = run(self.repo, "log", "-m", "m", "-a", "a", self.ONE_LINE)
+        self.assertEqual(r.returncode, 0, r.stderr + r.stdout)
+        self.assert_clean_fields()
+        self.assertIn("goal: G the goal", self.history_text())
+        self.assertNotIn("goal: G the goal attempted", self.history_text())
+
+    def test_one_line_labeled_body_multiple_arguments(self) -> None:
+        r = run(self.repo, "log", "-m", "m", "-a", "a", *self.ONE_LINE.split(" "))
+        self.assertEqual(r.returncode, 0, r.stderr + r.stdout)
+        self.assert_clean_fields()
+
+    def test_mixed_line_and_inline_labeled_body(self) -> None:
+        body = "goal: G the goal attempted: A did a thing\nhappened: H it broke workaround: W used another way\nideal_outcome: I it just works"
+        r = run(self.repo, "log", "-m", "m", "-a", "a", body)
+        self.assertEqual(r.returncode, 0, r.stderr + r.stdout)
+        self.assert_clean_fields()
+
+    def test_one_line_and_newline_bodies_dedupe_to_one_entry(self) -> None:
+        self.assertEqual(run(self.repo, "log", "-m", "m", "-a", "a", self.ONE_LINE).returncode, 0)
+        newline = self.ONE_LINE.replace(" attempted:", "\nattempted:").replace(" happened:", "\nhappened:")
+        newline = newline.replace(" workaround:", "\nworkaround:").replace(" ideal_outcome:", "\nideal_outcome:")
+        r = run(self.repo, "log", "-m", "m", "-a", "a", newline)
+        self.assertIn("already logged", r.stdout)
+        self.assertIn("(1 total", run(self.repo, "list").stdout)
+
+    def test_newline_body_value_mentioning_a_label_is_kept(self) -> None:
+        body = "\n".join(
+            [
+                "goal: avoid the workaround: hand-editing open.md",
+                "attempted: A", "happened: H", "workaround: W", "ideal_outcome: I",
+            ]
+        )
+        self.assertEqual(run(self.repo, "log", "-m", "m", "-a", "a", body).returncode, 0)
+        self.assertIn("goal: avoid the workaround: hand-editing open.md", self.open_text())
+        self.assertEqual(self.stored_fields()["workaround"], "W")
+
+    def test_one_line_body_missing_a_field_names_it(self) -> None:
+        body = self.ONE_LINE.replace(" ideal_outcome: I it just works", "")
+        before = self.open_text()
+        r = run(self.repo, "log", "-m", "m", "-a", "a", body)
+        self.assertEqual(r.returncode, 2, r.stdout + r.stderr)
+        self.assertIn("ideal_outcome", r.stderr)
+        self.assertNotIn("goal (", r.stderr.split("usage:")[0])
+        self.assertEqual(self.open_text(), before)
+
+    def test_retry_after_needs_mike_is_a_noop(self) -> None:
+        self.assertEqual(run(self.repo, *log_args(dict(FULL))).returncode, 0)
+        nm = run(self.repo, "needs-mike", "--stamp", self.first_stamp(), "-r", "policy call", "--date", "2026-11-18")
+        self.assertEqual(nm.returncode, 0, nm.stderr + nm.stdout)
+        parked = self.open_text()
+        hist = self.history_text()
+        self.assertIn("> needs-Mike (2026-11-18 sand): policy call", parked)
+        retry = run(self.repo, *log_args(dict(FULL)))
+        self.assertEqual(retry.returncode, 0, retry.stderr + retry.stdout)
+        self.assertIn("already logged", retry.stdout)
+        self.assertEqual(self.open_text(), parked)
+        self.assertEqual(self.history_text(), hist)
+        self.assertEqual(len(self.logged_events()), 1)
+
+    def test_needs_mike_marker_never_enters_a_field_value(self) -> None:
+        self.assertEqual(run(self.repo, *log_args(dict(FULL))).returncode, 0)
+        run(self.repo, "needs-mike", "--stamp", self.first_stamp(), "-r", "policy call")
+        out = run(self.repo, "check")
+        self.assertEqual(out.returncode, 0)
+        self.assertIn("0 thin", out.stdout)
+        # the marker is also stripped from a retry-after-edit comparison
+        again = run(self.repo, "needs-mike", "--stamp", self.first_stamp(), "-r", "updated", "--date", "2026-11-19")
+        self.assertEqual(again.returncode, 0, again.stderr + again.stdout)
+        self.assertEqual(self.open_text().count("> needs-Mike"), 1)
+        self.assertIn("already logged", run(self.repo, *log_args(dict(FULL))).stdout)
+
+    def test_dedupe_includes_suggested_fix(self) -> None:
+        self.assertEqual(run(self.repo, *log_args(dict(FULL))).returncode, 0)
+        with_fix = dict(FULL, suggested_fix="Have install print a PATH check.")
+        r = run(self.repo, *log_args(with_fix))
+        self.assertEqual(r.returncode, 0, r.stderr + r.stdout)
+        self.assertNotIn("already logged", r.stdout)
+        self.assertIn("(2 total", run(self.repo, "list").stdout)
+        again = run(self.repo, *log_args(with_fix))
+        self.assertIn("already logged", again.stdout)
+        other = run(self.repo, *log_args(dict(FULL, suggested_fix="Document PATH in the README.")))
+        self.assertNotIn("already logged", other.stdout)
+        self.assertIn("(3 total", run(self.repo, "list").stdout)
+        self.assertEqual(len(self.logged_events()), 3)
+
+    def test_legacy_proposed_fix_entry_dedupes_against_same_suggested_fix(self) -> None:
+        open_path = self.repo / ".agent-papercuts" / "open.md"
+        open_path.write_text(self.open_text() + LEGACY_PROPOSED_FIX, encoding="utf-8")
+        fields = dict(
+            FULL,
+            suggested_fix="Have install print a PATH check and fail if the shim is not reachable.",
+        )
+        # LEGACY_PROPOSED_FIX has no ideal_outcome, so it is thin, not a dup of a complete retry.
+        r = run(self.repo, *log_args(fields))
+        self.assertEqual(r.returncode, 0, r.stderr + r.stdout)
+        self.assertIn("(2 total", run(self.repo, "list").stdout)
+
+    def test_refusal_prints_flag_spellings_usage_and_enable_force_hint(self) -> None:
+        r = run(self.repo, "log", "-m", "ci", "Smoke: the old one-liner.")
+        self.assertEqual(r.returncode, 2, r.stdout + r.stderr)
+        err = r.stderr
+        for flag in ("--goal", "--attempted", "--happened", "--workaround", "--ideal-outcome", "--suggested-fix"):
+            self.assertIn(flag, err)
+        self.assertIn("usage:", err)
+        self.assertIn("papercut enable --force", err)
+        self.assertIn("unknown — <reason>", err)
+
+    def test_old_one_liner_snippet_repo_gets_a_clear_message(self) -> None:
+        # A repo enabled before R-CLI-04 still teaches `papercut -m <model> "…"`.
+        md = self.repo / "AGENTS.md"
+        md.write_text(
+            "<!-- agent-papercuts:begin -->\n```bash\npapercut -m <model> \"one or two sentences\"\n```\n<!-- agent-papercuts:end -->\n",
+            encoding="utf-8",
+        )
+        # Exactly what the stale snippet tells agents to run: no subcommand, no -C.
+        r = subprocess.run(
+            [str(PAPERCUT), "-m", "old-model", "one or two sentences of friction"],
+            cwd=self.repo, text=True, capture_output=True, env=os.environ.copy(),
+        )
+        self.assertEqual(r.returncode, 2, r.stdout + r.stderr)
+        self.assertIn("papercut enable --force", r.stderr)
+        self.assertIn("--ideal-outcome", r.stderr)
+        enabled = run(self.repo, "enable", "--force")
+        self.assertEqual(enabled.returncode, 0, enabled.stderr + enabled.stdout)
+        self.assertIn("--ideal-outcome", md.read_text(encoding="utf-8"))
+
 
 if __name__ == "__main__":
     unittest.main()

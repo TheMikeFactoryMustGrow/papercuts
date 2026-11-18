@@ -140,14 +140,14 @@ SUBCOMMANDS = {
 REQUIRED_FIELDS = ("goal", "attempted", "happened", "workaround", "ideal_outcome")
 OPTIONAL_FIELDS = ("suggested_fix",)
 # proposed_fix is parsed so older structured entries stay intact as history.
-FIELD_LABEL_RE = re.compile(
-    r"^(goal|attempted|happened|workaround|ideal_outcome|suggested_fix|proposed_fix)\s*:\s*(.*)$",
-    re.IGNORECASE,
-)
-INLINE_LABEL_RE = re.compile(
-    r"(goal|attempted|happened|workaround|ideal_outcome|suggested_fix|proposed_fix)\s*:\s*",
-    re.IGNORECASE,
-)
+_LABELS = r"(goal|attempted|happened|workaround|ideal[_-]outcome|suggested[_-]fix|proposed[_-]fix)"
+FIELD_LABEL_RE = re.compile(r"^" + _LABELS + r"\s*:\s*(.*)$", re.IGNORECASE)
+# Mid-line label: must start the text or follow whitespace, so "network:" or
+# "sub-goal:" inside a value is not mistaken for a label.
+INLINE_LABEL_RE = re.compile(r"(?<![^\s])" + _LABELS + r"\s*:\s*", re.IGNORECASE)
+# Parked-for-Mike marker written by `papercut needs-mike`. It is an annotation on
+# the entry, never part of any field value.
+NEEDS_MIKE_RE = re.compile(r"^>\s*needs-Mike\b.*$", re.IGNORECASE | re.MULTILINE)
 INCOMPLETE_UNKNOWN_RE = re.compile(
     r"^unknown(?:\s+(?:—|--|–|-)\s*)?$",
     re.IGNORECASE,
@@ -380,35 +380,71 @@ def _collapse(value: str) -> str:
     return re.sub(r"\s+", " ", value).strip()
 
 
-def parse_fields(body: str) -> dict[str, str]:
-    """Pull required and optional field labels out of a body."""
-    if not body or not body.strip():
-        return {}
+def strip_annotations(body: str) -> str:
+    """Drop annotation lines (the `> needs-Mike ...` marker) from a stored body."""
+    return NEEDS_MIKE_RE.sub("", body or "").strip()
+
+
+def _label_key(label: str) -> str:
+    return label.lower().replace("-", "_")
+
+
+def _parse_line_fields(body: str) -> dict[str, str]:
+    """Labels that start a line; continuation lines belong to the last label."""
     parts: dict[str, list[str]] = {}
     current: str | None = None
     for raw in body.splitlines():
         m = FIELD_LABEL_RE.match(raw.strip())
         if m:
-            current = m.group(1).lower()
+            current = _label_key(m.group(1))
             parts.setdefault(current, [])
             rest = m.group(2).strip()
             if rest:
                 parts[current].append(rest)
         elif current is not None and raw.strip():
             parts[current].append(raw.strip())
-    fields = {k: _collapse(" ".join(v)) for k, v in parts.items()}
-    if all(fields.get(k) for k in REQUIRED_FIELDS):
-        return fields
+    return {k: _collapse(" ".join(v)) for k, v in parts.items()}
+
+
+def _parse_inline_fields(body: str) -> dict[str, str]:
+    """Labels anywhere in the text (one-line or space-joined bodies). Text before
+    the first label is not part of any field."""
+    fields: dict[str, str] = {}
     matches = list(INLINE_LABEL_RE.finditer(body))
-    if not matches:
-        return fields
     for i, m in enumerate(matches):
-        key = m.group(1).lower()
+        key = _label_key(m.group(1))
         end = matches[i + 1].start() if i + 1 < len(matches) else len(body)
         value = _collapse(body[m.end() : end])
         if value and not fields.get(key):
             fields[key] = value
     return fields
+
+
+def parse_fields(body: str) -> dict[str, str]:
+    """Pull required and optional field labels out of a body.
+
+    Line-start labels win when they yield every required field (so a value that
+    merely mentions "workaround:" mid-sentence is left alone). Otherwise the body
+    is re-read splitting on labels anywhere in the text, so a one-line labeled
+    body does not stuff every label into `goal`. Whichever reading leaves fewer
+    required fields missing is returned. Annotation lines are never field text.
+    """
+    body = strip_annotations(body)
+    if not body:
+        return {}
+    by_line = _parse_line_fields(body)
+    if not missing_fields(by_line):
+        return by_line
+    by_inline = _parse_inline_fields(body)
+    if len(missing_fields(by_inline)) < len(missing_fields(by_line)):
+        return by_inline
+    return by_line
+
+
+def searchable_text(body: str) -> str:
+    """Text that `--contains` matches: the entry text with annotation lines and
+    field labels removed, so boilerplate like `workaround:` never selects an entry."""
+    return _collapse(INLINE_LABEL_RE.sub(" ", strip_annotations(body))).lower()
 
 
 def field_is_filled(value: str | None) -> bool:
@@ -449,26 +485,46 @@ def collect_log_fields(args: argparse.Namespace) -> dict[str, str]:
     return fields
 
 
+LOG_USAGE = (
+    'papercut -m <model> --goal "…" --attempted "…" --happened "…" '
+    '--workaround "…" --ideal-outcome "…" [--suggested-fix "…"]'
+)
+
+
 def refuse_missing(missing: list[str]) -> int:
-    names = ", ".join(missing)
+    names = ", ".join(f"{k} (--{k.replace('_', '-')})" for k in missing)
     print(
         f"error: missing required field(s): {names}\n"
+        f"usage: {LOG_USAGE}\n"
         "each of goal, attempted, happened, workaround, ideal_outcome is required "
         "(non-blank). If you cannot fill one, use: unknown — <reason>. "
-        "This gates new logs only; existing thin entries can still be resolved.",
+        "A labeled body (goal: … attempted: … happened: … workaround: … ideal_outcome: …, "
+        "newline-separated or on one line) is also accepted.\n"
+        "This gates new logs only; existing thin entries can still be resolved.\n"
+        "Still seeing the old one-line `papercut -m <model> \"…\"` instructions in this "
+        "repo's AGENTS.md / open.md? Run `papercut enable --force` once to refresh them.",
         file=sys.stderr,
     )
     return 2
 
 
 def content_key(model: str, author: str, fields: dict[str, str] | None = None, body: str | None = None) -> tuple:
-    """Dedupe key for a retry of the same papercut. Ignores stamp."""
+    """Dedupe key for a retry of the same papercut. Ignores stamp and annotations.
+
+    Key = model + author + normalized required fields + suggested_fix, so a retry
+    that adds or changes the optional suggested_fix is a distinct papercut. A
+    legacy proposed_fix counts as suggested_fix. Unfilled values (blank or a bare
+    `unknown`) count as absent, matching what `format_body` stores."""
     if fields is None:
         fields = parse_fields(body or "")
     if all(k in fields for k in REQUIRED_FIELDS):
+        suggested = fields.get("suggested_fix") or fields.get("proposed_fix")
+        if not field_is_filled(suggested):
+            suggested = ""
         values = tuple(_collapse(fields[k]).lower() for k in REQUIRED_FIELDS)
+        values += (_collapse(suggested).lower(),)
     else:
-        values = (_collapse(body or "").lower(),)
+        values = (_collapse(strip_annotations(body or "")).lower(),)
     return (model, author, values)
 
 
@@ -676,10 +732,21 @@ def select_entries(entries: list[dict], args: argparse.Namespace) -> list[dict] 
             return 1
     elif contains:
         needle = contains.lower()
-        selected = [e for e in entries if needle in e["body"].lower()]
+        needle = _collapse(needle)
+        selected = [e for e in entries if needle in searchable_text(e["body"])]
         if not selected:
             print(f"error: no open entries matching --contains {contains!r}", file=sys.stderr)
             return 1
+        if len(selected) > 1 and not getattr(args, "all", False):
+            print(
+                f"error: --contains {contains!r} matches {len(selected)} open entries; "
+                "refusing to act on more than one without --all. "
+                "Narrow the needle, use --stamp/--index, or pass --all to act on every match:",
+                file=sys.stderr,
+            )
+            for e in selected:
+                print(f"  {e['stamp']}  [{e['model']}]  {searchable_text(e['body'])[:80]}", file=sys.stderr)
+            return 2
     elif indices:
         ordered = list(reversed(entries))
         for idx in indices:
@@ -752,9 +819,6 @@ def cmd_resolve(args: argparse.Namespace) -> int:
     for e in removed:
         print(f"  - {e['stamp']}: {e['body'][:80]}{'…' if len(e['body']) > 80 else ''}")
     return 0
-
-
-NEEDS_MIKE_RE = re.compile(r"^> needs-Mike \(\d{4}-\d{2}-\d{2} sand\):.*$", re.MULTILINE)
 
 
 def needs_mike_line(reason: str, date: str | None = None) -> str:
@@ -1212,14 +1276,16 @@ def build_parser() -> argparse.ArgumentParser:
     res = sub.add_parser("resolve", help="clear open entries after a fix; append history")
     res.add_argument("-n", "--note", required=True, help="one-line preventive fix")
     res.add_argument("--stamp", action="append", default=None)
-    res.add_argument("--contains", default=None)
+    res.add_argument("--contains", default=None, help="match entry text (field labels and the needs-Mike marker are ignored); more than one match needs --all")
+    res.add_argument("--all", action="store_true", help="let --contains act on every matching entry")
     res.add_argument("--index", type=int, action="append", default=None)
 
     nm = sub.add_parser("needs-mike", help="park open entries for Mike (writes the > needs-Mike marker)")
     nm.add_argument("-r", "--reason", required=True, help="why only Mike can decide")
     nm.add_argument("--date", default=None, help="override marker date (YYYY-MM-DD)")
     nm.add_argument("--stamp", action="append", default=None)
-    nm.add_argument("--contains", default=None)
+    nm.add_argument("--contains", default=None, help="match entry text (field labels and the needs-Mike marker are ignored); more than one match needs --all")
+    nm.add_argument("--all", action="store_true", help="let --contains act on every matching entry")
     nm.add_argument("--index", type=int, action="append", default=None)
 
     hist = sub.add_parser("history", help="read shadow ledger")

@@ -158,7 +158,7 @@ papercut list
 papercut list -n 10
 papercut check                               # report thin open entries (informational; always exits 0)
 papercut resolve --stamp <ts> -n "what you fixed"   # clear open entry + history event=resolved
-papercut resolve --contains "vitest" -n "…"
+papercut resolve --contains "vitest" -n "…"           # matches entry text only (not field labels); >1 match needs --all
 papercut resolve --index 1 --index 2 -n "…"           # indices from list (newest first)
 papercut needs-mike --stamp <ts> -r "why only Mike can decide"  # writes > needs-Mike marker
 papercut history -n 20
@@ -176,7 +176,11 @@ a later fixer can start with the goal and work backwards, instead of
 prescribing "fix this, fix that" and running in circles. `suggested_fix` is
 optional and never required. The CLI refuses a blank or missing required field
 and names it. If you cannot fill one, use `unknown — <reason>` so logging is
-never blocked. A retry of the same papercut is idempotent (no duplicate).
+never blocked. A retry of the same papercut is idempotent (no duplicate), even
+after the entry was parked with `needs-mike`; a retry that adds or changes
+`suggested_fix` is a different papercut. A labeled body works newline-separated
+or on one line. `--contains` (resolve / needs-mike) ignores field labels and the
+needs-Mike marker, and refuses to act on more than one match without `--all`.
 
 This format improves future feedback. It does **not** gate fixing already-open
 items. Existing thin entries are grandfathered: leave them as they are
