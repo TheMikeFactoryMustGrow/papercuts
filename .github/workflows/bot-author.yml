@@ -1,0 +1,17 @@
+# bot-author: fails unless the PR body has a line "Bot-Author: <agent name> (<Grok Bot agent id>)" naming a roster agent
+# (Mike or Claude: "Bot-Author: mike" / "Bot-Author: claude"). Every bot pushes as the same GitHub user, so this line is how
+# the Oracle knows whom to message about a PR. Not a required check (branch protection is deferred a week; Mike, 2026-11-19).
+# Source: TheMikeFactoryMustGrow/fleet-skills skills/pr-review-lane 0.1.1 (merge commit 43d0d50e446b2e6e5ddbce9c83fa8419f867dad9).
+# fleet-skills is private: its Actions access setting must allow this repo (set to the owner's repositories on 2026-11-19).
+# Move the pin with a reviewed PR; the roster is read at that commit.
+name: bot-author
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened, ready_for_review]
+permissions: {}
+jobs:
+  bot-author:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: TheMikeFactoryMustGrow/fleet-skills/skills/pr-review-lane/action@43d0d50e446b2e6e5ddbce9c83fa8419f867dad9 # pr-review-lane 0.1.1
