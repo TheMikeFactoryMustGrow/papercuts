@@ -1,6 +1,6 @@
 Bot-Author: <agent name> (<Grok Bot agent id>)
 
-<!-- Bots: replace the line above with your own name and id from TheMikeFactoryMustGrow/fleet-skills skills/pr-review-lane/data/roster.json, as plain text (not in a comment or a code block). Mike writes `Bot-Author: mike` and Claude `Bot-Author: claude` (no id). Every bot pushes as the same GitHub user, so this line is how the Oracle knows whom to message about this PR. The bot-author check fails the PR until it is right. -->
+<!-- Bots: replace the line above with your own name and id from TheMikeFactoryMustGrow/fleet-skills skills/pr-review-lane/data/roster.json, as plain text (not in a comment or a code block). Mike writes `Bot-Author: mike` and Claude `Bot-Author: claude` (no id). Every bot pushes as the same GitHub user, so this line is how the Oracle knows whom to message about this PR. R-PR-02: the Oracle's merge gate (rule R07) refuses to merge a PR without a valid line. There is no CI check for it in this repo: papercuts is public and cannot use the private action, so the check is held. -->
 
 <!--
   Agents and humans: fill every section that applies.
